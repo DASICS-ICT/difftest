@@ -92,23 +92,76 @@ INTERFACE_CSR_STATE {
   packet->priviledgeMode = priviledgeMode;
   packet->mstatus = mstatus;
   packet->sstatus = sstatus;
+  packet->ustatus = ustatus;
   packet->mepc = mepc;
   packet->sepc = sepc;
+  packet->uepc = uepc;
   packet->mtval = mtval;
   packet->stval = stval;
+  packet->utval = utval;
   packet->mtvec = mtvec;
   packet->stvec = stvec;
+  packet->utvec = utvec;
   packet->mcause = mcause;
   packet->scause = scause;
+  packet->ucause = ucause;
   packet->satp = satp;
   packet->mip = mip;
   packet->mie = mie;
   packet->mscratch = mscratch;
   packet->sscratch = sscratch;
+  packet->uscratch = uscratch;
   packet->mideleg = mideleg;
+  packet->sideleg = sideleg;
   packet->medeleg = medeleg;
+  packet->sedeleg = sedeleg;
+
+  packet->dsmcfg = dsmcfg;
+  packet->dsmbound0 = dsmbound0;
+  packet->dsmbound1 = dsmbound1;
+  packet->dumcfg = dumcfg;
+  packet->dumbound0 = dumbound0;
+  packet->dumbound1 = dumbound1;
+  packet->dlcfg0 = dlcfg0;
+  packet->dlcfg1 = dlcfg1;
+  packet->dlbound0 = dlbound0;
+  packet->dlbound1 = dlbound1;
+  packet->dlbound2 = dlbound2;
+  packet->dlbound3 = dlbound3;
+  packet->dlbound4 = dlbound4;
+  packet->dlbound5 = dlbound5;
+  packet->dlbound6 = dlbound6;
+  packet->dlbound7 = dlbound7;
+  packet->dlbound8 = dlbound8;
+  packet->dlbound9 = dlbound9;
+  packet->dlbound10 = dlbound10;
+  packet->dlbound11 = dlbound11;
+  packet->dlbound12 = dlbound12;
+  packet->dlbound13 = dlbound13;
+  packet->dlbound14 = dlbound14;
+  packet->dlbound15 = dlbound15;
+  packet->dlbound16 = dlbound16;
+  packet->dlbound17 = dlbound17;
+  packet->dlbound18 = dlbound18;
+  packet->dlbound19 = dlbound19;
+  packet->dlbound20 = dlbound20;
+  packet->dlbound21 = dlbound21;
+  packet->dlbound22 = dlbound22;
+  packet->dlbound23 = dlbound23;
+  packet->dlbound24 = dlbound24;
+  packet->dlbound25 = dlbound25;
+  packet->dlbound26 = dlbound26;
+  packet->dlbound27 = dlbound27;
+  packet->dlbound28 = dlbound28;
+  packet->dlbound29 = dlbound29;
+  packet->dlbound30 = dlbound30;
+  packet->dlbound31 = dlbound31;
+  packet->dmaincall = dmaincall;
+  packet->dretpc = dretpc;
+  packet->dretpcfz = dretpcfz;
 }
 
+#ifdef DEBUG_MODE_DIFF
 INTERFACE_DM_STATE {
   RETURN_NO_NULL
   auto packet = difftest[coreid]->get_debug_state();
@@ -118,6 +171,7 @@ INTERFACE_DM_STATE {
   packet->dscratch0 = dscratch0;
   packet->dscratch1 = dscratch1;
 }
+#endif  // DEBUG_MODE_DIFF
 
 INTERFACE_INT_WRITEBACK {
   RETURN_NO_NULL

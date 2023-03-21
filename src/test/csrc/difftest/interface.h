@@ -124,21 +124,72 @@ extern "C" int v_difftest_step();
     DPIC_ARG_BYTE priviledgeMode,        \
     DPIC_ARG_LONG mstatus,               \
     DPIC_ARG_LONG sstatus,               \
+    DPIC_ARG_LONG ustatus,               \
     DPIC_ARG_LONG mepc,                  \
     DPIC_ARG_LONG sepc,                  \
+    DPIC_ARG_LONG uepc,                  \
     DPIC_ARG_LONG mtval,                 \
     DPIC_ARG_LONG stval,                 \
+    DPIC_ARG_LONG utval,                 \
     DPIC_ARG_LONG mtvec,                 \
     DPIC_ARG_LONG stvec,                 \
+    DPIC_ARG_LONG utvec,                 \
     DPIC_ARG_LONG mcause,                \
     DPIC_ARG_LONG scause,                \
+    DPIC_ARG_LONG ucause,                \
     DPIC_ARG_LONG satp,                  \
     DPIC_ARG_LONG mip,                   \
     DPIC_ARG_LONG mie,                   \
     DPIC_ARG_LONG mscratch,              \
     DPIC_ARG_LONG sscratch,              \
+    DPIC_ARG_LONG uscratch,              \
     DPIC_ARG_LONG mideleg,               \
-    DPIC_ARG_LONG medeleg                \
+    DPIC_ARG_LONG sideleg,               \
+    DPIC_ARG_LONG medeleg,               \
+    DPIC_ARG_LONG sedeleg,               \
+    DPIC_ARG_LONG dsmcfg,                \
+    DPIC_ARG_LONG dsmbound0,             \
+    DPIC_ARG_LONG dsmbound1,             \
+    DPIC_ARG_LONG dumcfg,                \
+    DPIC_ARG_LONG dumbound0,             \
+    DPIC_ARG_LONG dumbound1,             \
+    DPIC_ARG_LONG dlcfg0,                \
+    DPIC_ARG_LONG dlcfg1,                \
+    DPIC_ARG_LONG dlbound0,              \
+    DPIC_ARG_LONG dlbound1,              \
+    DPIC_ARG_LONG dlbound2,              \
+    DPIC_ARG_LONG dlbound3,              \
+    DPIC_ARG_LONG dlbound4,              \
+    DPIC_ARG_LONG dlbound5,              \
+    DPIC_ARG_LONG dlbound6,              \
+    DPIC_ARG_LONG dlbound7,              \
+    DPIC_ARG_LONG dlbound8,              \
+    DPIC_ARG_LONG dlbound9,              \
+    DPIC_ARG_LONG dlbound10,             \
+    DPIC_ARG_LONG dlbound11,             \
+    DPIC_ARG_LONG dlbound12,             \
+    DPIC_ARG_LONG dlbound13,             \
+    DPIC_ARG_LONG dlbound14,             \
+    DPIC_ARG_LONG dlbound15,             \
+    DPIC_ARG_LONG dlbound16,             \
+    DPIC_ARG_LONG dlbound17,             \
+    DPIC_ARG_LONG dlbound18,             \
+    DPIC_ARG_LONG dlbound19,             \
+    DPIC_ARG_LONG dlbound20,             \
+    DPIC_ARG_LONG dlbound21,             \
+    DPIC_ARG_LONG dlbound22,             \
+    DPIC_ARG_LONG dlbound23,             \
+    DPIC_ARG_LONG dlbound24,             \
+    DPIC_ARG_LONG dlbound25,             \
+    DPIC_ARG_LONG dlbound26,             \
+    DPIC_ARG_LONG dlbound27,             \
+    DPIC_ARG_LONG dlbound28,             \
+    DPIC_ARG_LONG dlbound29,             \
+    DPIC_ARG_LONG dlbound30,             \
+    DPIC_ARG_LONG dlbound31,             \
+    DPIC_ARG_LONG dmaincall,             \
+    DPIC_ARG_LONG dretpc,                \
+    DPIC_ARG_LONG dretpcfz               \
   )
 
 // v_difftest_DebugMode
