@@ -101,6 +101,28 @@ typedef struct __attribute__((packed)) {
   uint64_t mtvec;
   uint64_t stvec;
   uint64_t priviledgeMode;
+
+  // RVN Extension CSRs for difftest
+  uint64_t ustatus;
+  uint64_t ucause;
+  uint64_t uepc;
+  uint64_t uscratch;
+  uint64_t utval;
+  uint64_t utvec;
+  uint64_t sedeleg;
+  uint64_t sideleg;
+
+  // DASICS CSRs for difftest
+  uint64_t dsmcfg, dsmbound0, dsmbound1;
+  uint64_t dumcfg, dumbound0, dumbound1;
+  uint64_t dlcfg0, dlcfg1;
+  uint64_t dlbound0, dlbound1, dlbound2, dlbound3, dlbound4, dlbound5;
+  uint64_t dlbound6, dlbound7, dlbound8, dlbound9, dlbound10, dlbound11;
+  uint64_t dlbound12, dlbound13, dlbound14, dlbound15, dlbound16, dlbound17;
+  uint64_t dlbound18, dlbound19, dlbound20, dlbound21, dlbound22, dlbound23;
+  uint64_t dlbound24, dlbound25, dlbound26, dlbound27, dlbound28, dlbound29;
+  uint64_t dlbound30, dlbound31;
+  uint64_t dmaincall, dretpc, dretpcfz;
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {
@@ -111,11 +133,12 @@ typedef struct __attribute__((packed)) {
   uint64_t dscratch1;
 } debug_mode_t;
 
-#ifndef DEBUG_MODE_DIFF
-const int DIFFTEST_NR_REG = (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t)) / sizeof(uint64_t);
-#else
-const int DIFFTEST_NR_REG = (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t) + sizeof(debug_mode_t)) / sizeof(uint64_t);
-#endif
+const int DIFFTEST_NR_REG = \
+  (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t)
+#ifdef DEBUG_MODE_DIFF
+  + sizeof(debug_mode_t)
+#endif  // DEBUG_MODE_DIFF
+  ) / sizeof(uint64_t);
 
 typedef struct {
   uint8_t  resp = 0;
@@ -204,7 +227,9 @@ typedef struct {
   instr_commit_t    commit[DIFFTEST_COMMIT_WIDTH];
   arch_reg_state_t  regs;
   arch_csr_state_t  csr;
+#ifdef DEBUG_MODE_DIFF
   debug_mode_t      dmregs;
+#endif  // DEBUG_MODE_DIFF
   sbuffer_state_t   sbuffer[DIFFTEST_SBUFFER_RESP_WIDTH];
   store_event_t     store[DIFFTEST_STORE_WIDTH];
   load_event_t      load[DIFFTEST_COMMIT_WIDTH];
@@ -348,10 +373,16 @@ public:
   inline physical_reg_state_t *get_physical_reg_state() {
     return &(dut.pregs);
   }
+#ifdef RVN_DIFF
+  inline arch_rvn_state_t *get_rvn_state() {
+    return &(dut.rvn_csr);
+  }
+#endif  // RVN_DIFF
+#ifdef DEBUG_MODE_DIFF
   inline debug_mode_t *get_debug_state() {
     return &(dut.dmregs);
   }
-
+#endif  // DEBUG_MODE_DIFF
 #ifdef DEBUG_REFILL
   void save_track_instr(uint64_t instr) {
     track_instr = instr;
