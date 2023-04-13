@@ -146,6 +146,16 @@ extern unsigned long EMU_FLASH_SIZE;
 #define AUTO_RUNAHEAD_CHECKPOINT_GC_THRESHOLD 192
 
 // -----------------------------------------------------------------------
+// RVN Extension and DASICS Protection Mechanism
+// -----------------------------------------------------------------------
+
+// Enable RVN Difftest
+#define RVN_DIFF
+
+// Enable DASICS Difftest
+#define DASICS_DIFF
+
+// -----------------------------------------------------------------------
 // Debug mode and trigger
 // -----------------------------------------------------------------------
 // make diff in debug mode available by copying debug mode mmio
