@@ -373,11 +373,6 @@ public:
   inline physical_reg_state_t *get_physical_reg_state() {
     return &(dut.pregs);
   }
-#ifdef RVN_DIFF
-  inline arch_rvn_state_t *get_rvn_state() {
-    return &(dut.rvn_csr);
-  }
-#endif  // RVN_DIFF
 #ifdef DEBUG_MODE_DIFF
   inline debug_mode_t *get_debug_state() {
     return &(dut.dmregs);
