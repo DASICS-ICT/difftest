@@ -36,11 +36,14 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "mip", "mie", "mscratch", "sscratch", "mideleg", "medeleg",
   "mtval", "stval", "mtvec", "stvec", "mode",
 
+#ifdef RVN_DIFF
   /* RVN Extension CSRs for difftest */
   "ustatus", "ucause", "uepc",
   "uscratch", "utval", "utvec",
   "sedeleg", "sideleg",
+#endif  // RVN_DIFF
 
+#ifdef DASICS_DIFF
   /* DASICS CSRs for difftest */
   "dsmcfg", "dsmbound0", "dsmbound1",
   "dumcfg", "dumbound0", "dumbound1",
@@ -52,6 +55,7 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dlbound24", "dlbound25", "dlbound26", "dlbound27", "dlbound28", "dlbound29",
   "dlbound30", "dlbound31",
   "dmaincall", "dretpc", "dretpcfz",
+#endif  // DASICS_DIFF
 
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",

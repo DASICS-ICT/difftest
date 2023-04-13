@@ -92,30 +92,34 @@ INTERFACE_CSR_STATE {
   packet->priviledgeMode = priviledgeMode;
   packet->mstatus = mstatus;
   packet->sstatus = sstatus;
-  packet->ustatus = ustatus;
   packet->mepc = mepc;
   packet->sepc = sepc;
-  packet->uepc = uepc;
   packet->mtval = mtval;
   packet->stval = stval;
-  packet->utval = utval;
   packet->mtvec = mtvec;
   packet->stvec = stvec;
-  packet->utvec = utvec;
   packet->mcause = mcause;
   packet->scause = scause;
-  packet->ucause = ucause;
   packet->satp = satp;
   packet->mip = mip;
   packet->mie = mie;
   packet->mscratch = mscratch;
   packet->sscratch = sscratch;
-  packet->uscratch = uscratch;
   packet->mideleg = mideleg;
-  packet->sideleg = sideleg;
   packet->medeleg = medeleg;
-  packet->sedeleg = sedeleg;
 
+#ifdef RVN_DIFF
+  packet->ustatus = ustatus;
+  packet->uepc = uepc;
+  packet->utval = utval;
+  packet->utvec = utvec;
+  packet->ucause = ucause;
+  packet->uscratch = uscratch;
+  packet->sideleg = sideleg;
+  packet->sedeleg = sedeleg;
+#endif  // RVN_DIFF
+
+#ifdef DASICS_DIFF
   packet->dsmcfg = dsmcfg;
   packet->dsmbound0 = dsmbound0;
   packet->dsmbound1 = dsmbound1;
@@ -159,6 +163,7 @@ INTERFACE_CSR_STATE {
   packet->dmaincall = dmaincall;
   packet->dretpc = dretpc;
   packet->dretpcfz = dretpcfz;
+#endif  // DASICS_DIFF
 }
 
 #ifdef DEBUG_MODE_DIFF

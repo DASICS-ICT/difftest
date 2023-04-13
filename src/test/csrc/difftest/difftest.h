@@ -100,6 +100,7 @@ typedef struct __attribute__((packed)) {
   uint64_t stvec;
   uint64_t priviledgeMode;
 
+#ifdef RVN_DIFF
   // RVN Extension CSRs for difftest
   uint64_t ustatus;
   uint64_t ucause;
@@ -109,7 +110,9 @@ typedef struct __attribute__((packed)) {
   uint64_t utvec;
   uint64_t sedeleg;
   uint64_t sideleg;
+#endif  // RVN_DIFF
 
+#ifdef DASICS_DIFF
   // DASICS CSRs for difftest
   uint64_t dsmcfg, dsmbound0, dsmbound1;
   uint64_t dumcfg, dumbound0, dumbound1;
@@ -121,6 +124,7 @@ typedef struct __attribute__((packed)) {
   uint64_t dlbound24, dlbound25, dlbound26, dlbound27, dlbound28, dlbound29;
   uint64_t dlbound30, dlbound31;
   uint64_t dmaincall, dretpc, dretpcfz;
+#endif  // DASICS_DIFF
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {
