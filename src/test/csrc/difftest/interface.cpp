@@ -168,7 +168,6 @@ INTERFACE_CSR_STATE {
 #endif  // DASICS_DIFF
 }
 
-#ifdef DEBUG_MODE_DIFF
 INTERFACE_DM_STATE {
   RETURN_NO_NULL
   auto packet = difftest[coreid]->get_debug_state();
@@ -178,7 +177,6 @@ INTERFACE_DM_STATE {
   packet->dscratch0 = dscratch0;
   packet->dscratch1 = dscratch1;
 }
-#endif  // DEBUG_MODE_DIFF
 
 INTERFACE_INT_WRITEBACK {
   RETURN_NO_NULL
