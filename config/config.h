@@ -153,7 +153,7 @@ extern unsigned long EMU_FLASH_SIZE;
 #define RVN_DIFF
 
 // Enable DASICS Difftest
-// #define DASICS_DIFF
+#define DASICS_DIFF
 
 // -----------------------------------------------------------------------
 // Debug mode and trigger

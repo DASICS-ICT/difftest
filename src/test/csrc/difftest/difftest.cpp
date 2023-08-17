@@ -47,6 +47,7 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   /* DASICS CSRs for difftest */
   "dsmcfg", "dsmbound0", "dsmbound1",
   "dumcfg", "dumbound0", "dumbound1",
+  /* yet to connect
   "dlcfg0", "dlcfg1",
   "dlbound0", "dlbound1", "dlbound2", "dlbound3", "dlbound4", "dlbound5",
   "dlbound6", "dlbound7", "dlbound8", "dlbound9", "dlbound10", "dlbound11",
@@ -54,6 +55,7 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dlbound18", "dlbound19", "dlbound20", "dlbound21", "dlbound22", "dlbound23",
   "dlbound24", "dlbound25", "dlbound26", "dlbound27", "dlbound28", "dlbound29",
   "dlbound30", "dlbound31",
+  */
   "dmaincall", "dretpc", "dretpcfz",
 #endif  // DASICS_DIFF
 
