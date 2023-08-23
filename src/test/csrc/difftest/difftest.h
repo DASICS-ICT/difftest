@@ -127,6 +127,12 @@ typedef struct __attribute__((packed)) {
   uint64_t dlbound30, dlbound31;
   uint64_t dmaincall, dretpc, dretpcfz;
 #endif  // DASICS_DIFF
+
+#ifdef RV_MPK_DIFF
+  uint64_t upkru;
+  uint64_t spkrs;
+  uint64_t spkctl;
+#endif  // RV_MPK_DIFF
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {

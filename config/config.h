@@ -156,6 +156,13 @@ extern unsigned long EMU_FLASH_SIZE;
 #define DASICS_DIFF
 
 // -----------------------------------------------------------------------
+// Memory Protection Keys for RISC-V
+// -----------------------------------------------------------------------
+
+// Enable RV-MPK Difftest
+#define RV_MPK_DIFF
+
+// -----------------------------------------------------------------------
 // Debug mode and trigger
 // -----------------------------------------------------------------------
 // make diff in debug mode available by copying debug mode mmio

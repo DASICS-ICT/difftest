@@ -57,6 +57,11 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dmaincall", "dretpc", "dretpcfz",
 #endif  // DASICS_DIFF
 
+#ifdef RV_MPK_DIFF
+  /* RV-MPK CSRs for difftest */
+  "upkru", "spkrs", "spkctl",
+#endif // RV_MPK_DIFF
+
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",
 #endif

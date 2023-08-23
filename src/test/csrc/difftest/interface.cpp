@@ -166,6 +166,12 @@ INTERFACE_CSR_STATE {
   packet->dretpc = dretpc;
   packet->dretpcfz = dretpcfz;
 #endif  // DASICS_DIFF
+
+#ifdef RV_MPK_DIFF
+  packet->upkru = upkru;
+  packet->spkrs = spkrs;
+  packet->spkctl = spkctl;
+#endif  // RV_MPK_DIFF
 }
 
 #ifdef DEBUG_MODE_DIFF
