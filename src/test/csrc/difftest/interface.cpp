@@ -126,6 +126,7 @@ INTERFACE_CSR_STATE {
   packet->dumcfg = dumcfg;
   packet->dumbound0 = dumbound0;
   packet->dumbound1 = dumbound1;
+  /*
   packet->dlcfg0 = dlcfg0;
   packet->dlcfg1 = dlcfg1;
   packet->dlbound0 = dlbound0;
@@ -160,6 +161,7 @@ INTERFACE_CSR_STATE {
   packet->dlbound29 = dlbound29;
   packet->dlbound30 = dlbound30;
   packet->dlbound31 = dlbound31;
+  */
   packet->dmaincall = dmaincall;
   packet->dretpc = dretpc;
   packet->dretpcfz = dretpcfz;
