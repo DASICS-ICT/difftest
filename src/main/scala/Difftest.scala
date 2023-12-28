@@ -109,7 +109,6 @@ class DiffCSRStateIO extends DifftestBundle {
   val dumbound0 = Input(UInt(64.W))
   val dumbound1 = Input(UInt(64.W))
   val dlcfg0 = Input(UInt(64.W))
-  val dlcfg1 = Input(UInt(64.W))
   val dlbound0 = Input(UInt(64.W))
   val dlbound1 = Input(UInt(64.W))
   val dlbound2 = Input(UInt(64.W))
