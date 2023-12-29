@@ -188,7 +188,16 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dlbound31,             \
     DPIC_ARG_LONG dmaincall,             \
     DPIC_ARG_LONG dretpc,                \
-    DPIC_ARG_LONG dretpcfz               \
+    DPIC_ARG_LONG dretpcfz,              \
+    DPIC_ARG_LONG djbound0lo,            \
+    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound1lo,            \
+    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound2lo,            \
+    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound3lo,            \
+    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djcfg                  \
   )
 
 // v_difftest_DebugMode
