@@ -192,11 +192,11 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG djbound0lo,            \
     DPIC_ARG_LONG djbound0hi,            \
     DPIC_ARG_LONG djbound1lo,            \
-    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound1hi,            \
     DPIC_ARG_LONG djbound2lo,            \
-    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound2hi,            \
     DPIC_ARG_LONG djbound3lo,            \
-    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound3hi,            \
     DPIC_ARG_LONG djcfg                  \
   )
 
