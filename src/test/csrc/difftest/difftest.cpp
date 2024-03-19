@@ -36,6 +36,11 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "mip", "mie", "mscratch", "sscratch", "mideleg", "medeleg",
   "mtval", "stval", "mtvec", "stvec", "mode",
 
+#ifdef RV_MPK_DIFF
+  /* RV-MPK CSRs for difftest */
+  "upkru", "spkrs", "spkctl",
+#endif // RV_MPK_DIFF
+
 #ifdef RVN_DIFF
   /* RVN Extension CSRs for difftest */
   "ustatus", "ucause", "uepc",
@@ -58,11 +63,6 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   */
   "dmaincall", "dretpc", "dretpcfz",
 #endif  // DASICS_DIFF
-
-#ifdef RV_MPK_DIFF
-  /* RV-MPK CSRs for difftest */
-  "upkru", "spkrs", "spkctl",
-#endif // RV_MPK_DIFF
 
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",
