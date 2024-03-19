@@ -191,7 +191,10 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dlbound31,             \
     DPIC_ARG_LONG dmaincall,             \
     DPIC_ARG_LONG dretpc,                \
-    DPIC_ARG_LONG dretpcfz               \
+    DPIC_ARG_LONG dretpcfz,              \
+    DPIC_ARG_LONG upkru,                 \
+    DPIC_ARG_LONG spkrs,                 \
+    DPIC_ARG_LONG spkctl                 \
   )
 
 // v_difftest_DebugMode
