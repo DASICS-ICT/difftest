@@ -36,7 +36,7 @@ $(SIM_TOP_V): $(DIFF_SCALA_FILE) $(SCALA_FILE)
 # generate difftest files for non-chisel design.
 difftest_verilog:
 ifeq ($(USE_DIFFTEST_MAIN), 1)
-	mill chiselModule.runMain difftest.DifftestMain -td $(BUILD_DIR)
+	mill difftest.test.runMain difftest.DifftestMain --target-dir $(BUILD_DIR)
 endif
 
 # co-simulation with DRAMsim3
@@ -77,7 +77,7 @@ $(error NEMU_HOME is not set)
 endif
 REF_SO := $(NEMU_HOME)/build/riscv64-nemu-interpreter-so
 $(REF_SO):
-	$(MAKE) -C $(NEMU_HOME) riscv64-xs-ref_defconfig
+	$(MAKE) -C $(NEMU_HOME) riscv64-nutshell-ref_defconfig
 	$(MAKE) -C $(NEMU_HOME)
 
 SEED ?= $(shell shuf -i 1-10000 -n 1)

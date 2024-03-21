@@ -16,11 +16,14 @@
 
 package difftest
 
+import circt.stage._
 import chisel3._
 import chisel3.util._
 import chisel3.stage._
 
-// Main class to generat difftest modules when design is not written in chisel.
+// ATTENTION: THIS FILE IS DEPRECATED
+
+// Main class to generate difftest modules when design is not written in chisel.
 class DifftestTop extends Module {
     var difftest_arch_event = Module(new DifftestArchEvent);
     var difftest_basic_instr_commit = Module(new DifftestBasicInstrCommit);
@@ -47,7 +50,8 @@ class DifftestTop extends Module {
 }
 
 object DifftestMain extends App {
-  (new ChiselStage).execute(args, Seq(
-      ChiselGeneratorAnnotation(() => new DifftestTop))
+    (new ChiselStage).execute(args, Seq(ChiselGeneratorAnnotation(() => new DifftestTop))
+    :+ CIRCTTargetAnnotation(CIRCTTarget.SystemVerilog)
+    :+ FirtoolOption("--disable-annotation-unknown")
   )
 }

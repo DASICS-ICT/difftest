@@ -108,7 +108,7 @@ import difftest._
     val difftest = Module(new DifftestSbufferEvent)
     difftest.io.clock := clock
     difftest.io.coreid := hardId.U
-    difftest.io.sbufferResp := io.dcache.resp.fire()
+    difftest.io.sbufferResp := io.dcache.resp.fire
     difftest.io.sbufferAddr := getAddr(tag(respId))
     difftest.io.sbufferData := data(respId).asTypeOf(Vec(CacheLineBytes, UInt(8.W)))
     difftest.io.sbufferMask := mask(respId).asUInt
@@ -116,7 +116,7 @@ import difftest._
 
   if (!env.FPGAPlatform) {
     for (i <- 0 until StorePipelineWidth) {
-      val storeCommit = io.sbuffer(i).fire()
+      val storeCommit = io.sbuffer(i).fire
       val waddr = SignExt(io.sbuffer(i).bits.addr, 64)
       val wdata = io.sbuffer(i).bits.data & MaskExpand(io.sbuffer(i).bits.mask)
       val wmask = io.sbuffer(i).bits.mask
@@ -154,7 +154,7 @@ import difftest._
     val difftest = Module(new DifftestAtomicEvent)
     difftest.io.clock      := clock
     difftest.io.coreid     := hardId.U
-    difftest.io.atomicResp := io.dcache.resp.fire()
+    difftest.io.atomicResp := io.dcache.resp.fire
     difftest.io.atomicAddr := paddr_reg
     difftest.io.atomicData := data_reg
     difftest.io.atomicMask := mask_reg
@@ -187,13 +187,13 @@ class AXI4RAM
     require(address.length >= 1)
     val baseAddress = address(0).base
 
-    def index(addr: UInt) = ((addr - baseAddress.U)(offsetBits - 1, 0) >> log2Ceil(beatBytes)).asUInt()
+    def index(addr: UInt) = ((addr - baseAddress.U)(offsetBits - 1, 0) >> log2Ceil(beatBytes)).asUInt
 
     def inRange(idx: UInt) = idx < (memByte / beatBytes).U
 
     val wIdx = index(waddr) + writeBeatCnt
     val rIdx = index(raddr) + readBeatCnt
-    val wen = in.w.fire() && inRange(wIdx)
+    val wen = in.w.fire && inRange(wIdx)
     require(beatBytes >= 8)
 
     val rdata = if (useBlackBox) {

@@ -18,8 +18,9 @@ package difftest
 
 import chisel3._
 import chisel3.util._
-import Chisel.BlackBox
-import chisel3.experimental.{DataMirror, ExtModule}
+import chisel3.BlackBox
+import chisel3.experimental.ExtModule
+import chisel3.reflect.DataMirror
 
 trait DifftestParameter {
 }
