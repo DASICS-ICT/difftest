@@ -49,9 +49,11 @@ class DifftestTop extends Module {
     var difftest_runahead_memdep_pred = Module(new DifftestRunaheadMemdepPred);
 }
 
+//DEPRECATED
 object DifftestMain extends App {
     (new ChiselStage).execute(args, Seq(ChiselGeneratorAnnotation(() => new DifftestTop))
-    :+ CIRCTTargetAnnotation(CIRCTTarget.SystemVerilog)
+    :+ CIRCTTargetAnnotation(CIRCTTarget.Verilog)
     :+ FirtoolOption("--disable-annotation-unknown")
+    :+ FirtoolOption("--lowering-options=disallowLocalVariables")
   )
 }
