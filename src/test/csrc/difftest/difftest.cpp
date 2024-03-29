@@ -61,7 +61,9 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dlbound24", "dlbound25", "dlbound26", "dlbound27", "dlbound28", "dlbound29",
   "dlbound30", "dlbound31",
   */
-  "dmaincall", "dretpc", "dretpcfz",
+  "dmaincall", "dretpcfz",
+  "dretpc0", "dretpc2", "dretpc2", "dretpc3",
+  "dllevel", "djlevel",
 #endif  // DASICS_DIFF
 
 #ifdef DEBUG_MODE_DIFF

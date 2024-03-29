@@ -133,7 +133,9 @@ typedef struct __attribute__((packed)) {
   uint64_t dlbound24, dlbound25, dlbound26, dlbound27, dlbound28, dlbound29;
   uint64_t dlbound30, dlbound31;
   */
-  uint64_t dmaincall, dretpc, dretpcfz;
+  uint64_t dmaincall, dretpcfz;
+  uint64_t dretpc0, dretpc1, dretpc2, dretpc3;
+  uint64_t dllevel, djlevel;
 #endif  // DASICS_DIFF
 
 } arch_csr_state_t;

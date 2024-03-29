@@ -190,8 +190,13 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dlbound30,             \
     DPIC_ARG_LONG dlbound31,             \
     DPIC_ARG_LONG dmaincall,             \
-    DPIC_ARG_LONG dretpc,                \
     DPIC_ARG_LONG dretpcfz,              \
+    DPIC_ARG_LONG dretpc0,               \
+    DPIC_ARG_LONG dretpc1,               \
+    DPIC_ARG_LONG dretpc2,               \
+    DPIC_ARG_LONG dretpc3,               \
+    DPIC_ARG_LONG dllevel,               \
+    DPIC_ARG_LONG djlevel,               \
     DPIC_ARG_LONG upkru,                 \
     DPIC_ARG_LONG spkrs,                 \
     DPIC_ARG_LONG spkctl                 \
