@@ -116,6 +116,7 @@ class CSRState extends DifftestBaseBundle {
   val fdiLibBound = Vec(32, UInt(64.W))
   val fdiMainCall = UInt(64.W)
   val fdiReturnPC = UInt(64.W)
+  val fdiAZoneReturnPC = UInt(64.W)
   val fdiJumpCfg = UInt(64.W)
   val fdiJumpBound = Vec(8, UInt(64.W))
 }

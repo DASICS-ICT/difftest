@@ -54,7 +54,7 @@ static const char *regs_name_csr[] = {
   "fdiLibBound20", "fdiLibBound21", "fdiLibBound22", "fdiLibBound23",
   "fdiLibBound24", "fdiLibBound25", "fdiLibBound26", "fdiLibBound27",
   "fdiLibBound28", "fdiLibBound29", "fdiLibBound30", "fdiLibBound31",
-  "fdiMainCall", "fdiReturnPC",
+  "fdiMainCall", "fdiReturnPC", "fdiAZoneReturnPC",
   "fdiJumpCfg", 
   "fdiJumpBound0", "fdiJumpBound1","fdiJumpBound2", "fdiJumpBound3", 
   "fdiJumpBound4", "fdiJumpBound5","fdiJumpBound6", "fdiJumpBound7"
