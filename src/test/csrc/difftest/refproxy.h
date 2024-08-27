@@ -48,8 +48,16 @@ static const char *regs_name_csr[] = {
   "fdiLibCfg",
   "fdiLibBound0", "fdiLibBound1", "fdiLibBound2", "fdiLibBound3",
   "fdiLibBound4", "fdiLibBound5", "fdiLibBound6", "fdiLibBound7",
+  "fdiLibBound8", "fdiLibBound9", "fdiLibBound10", "fdiLibBound11",
+  "fdiLibBound12", "fdiLibBound13", "fdiLibBound14", "fdiLibBound15",
+  "fdiLibBound16", "fdiLibBound17", "fdiLibBound18", "fdiLibBound19",
+  "fdiLibBound20", "fdiLibBound21", "fdiLibBound22", "fdiLibBound23",
+  "fdiLibBound24", "fdiLibBound25", "fdiLibBound26", "fdiLibBound27",
+  "fdiLibBound28", "fdiLibBound29", "fdiLibBound30", "fdiLibBound31",
   "fdiMainCall", "fdiReturnPC",
-  "fdiJumpCfg", "fdiJumpBound0", "fdiJumpBound1",
+  "fdiJumpCfg", 
+  "fdiJumpBound0", "fdiJumpBound1","fdiJumpBound2", "fdiJumpBound3", 
+  "fdiJumpBound4", "fdiJumpBound5","fdiJumpBound6", "fdiJumpBound7"
 #endif  // FDI_DIFF
 };
 
