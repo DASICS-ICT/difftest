@@ -43,6 +43,10 @@ static const char *regs_name_csr[] = {
   "mtvec",
   "stvec", "mcause", "scause", "satp", "mip", "mie",
   "mscratch", "sscratch", "mideleg", "medeleg",
+  // N extension regs
+  "ustatus", "ucause", "uepc", 
+  "uscratch", "utval", "utvec", 
+  "sedeleg", "sideleg",
 #ifdef FDI_DIFF
   "fdiMainCfg", "fdiUMBoundLo", "fdiUMBoundHi",
   "fdiLibCfg",
