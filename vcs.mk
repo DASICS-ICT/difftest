@@ -114,3 +114,6 @@ $(VCS_TARGET): $(SIM_TOP_V) $(VCS_CXXFILES) $(VCS_VFILES) $(CFG_HEADERS)
 	$(shell find $(SIM_VSRC_DIR) -name "*.v" -or -name "*.sv" >> $(SIM_FLIST))
 	cp $(SIM_FLIST) $(VCS_SIM_DIR)/comp/
 	cd $(VCS_SIM_DIR)/comp && vcs $(VCS_FLAGS) -f $(SIM_FLIST) $(VCS_CXXFILES) $(ROT_include)
+
+vcs-clean:
+	rm -rf $(VCS_SIM_DIR) $(VCS_BUILD_DIR)
