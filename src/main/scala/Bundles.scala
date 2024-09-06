@@ -120,6 +120,8 @@ class CSRState extends DifftestBaseBundle {
   val sideleg = UInt(64.W)
 
   val fdiMainCfg = UInt(64.W)
+  val fdiSMBoundLo = UInt(64.W)
+  val fdiSMBoundHi = UInt(64.W)
   val fdiUMBoundLo = UInt(64.W)
   val fdiUMBoundHi = UInt(64.W)
   val fdiLibCfg = UInt(64.W)

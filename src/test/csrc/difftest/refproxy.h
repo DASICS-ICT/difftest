@@ -48,7 +48,7 @@ static const char *regs_name_csr[] = {
   "uscratch", "utval", "utvec", 
   "sedeleg", "sideleg",
 #ifdef FDI_DIFF
-  "fdiMainCfg", "fdiUMBoundLo", "fdiUMBoundHi",
+  "fdiMainCfg", "fdiSMBoundLo", "fdiSMBoundHi", "fdiUMBoundLo", "fdiUMBoundHi",
   "fdiLibCfg",
   "fdiLibBound0", "fdiLibBound1", "fdiLibBound2", "fdiLibBound3",
   "fdiLibBound4", "fdiLibBound5", "fdiLibBound6", "fdiLibBound7",
