@@ -61,7 +61,8 @@ static const char *regs_name_csr[] = {
   "fdiMainCall", "fdiReturnPC", "fdiAZoneReturnPC", "fdiFReason",
   "fdiJumpCfg", 
   "fdiJumpBound0", "fdiJumpBound1","fdiJumpBound2", "fdiJumpBound3", 
-  "fdiJumpBound4", "fdiJumpBound5","fdiJumpBound6", "fdiJumpBound7"
+  "fdiJumpBound4", "fdiJumpBound5","fdiJumpBound6", "fdiJumpBound7",
+  "upkru", "spkrs", "spkctl"
 #endif  // FDI_DIFF
 };
 

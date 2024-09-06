@@ -132,6 +132,10 @@ class CSRState extends DifftestBaseBundle {
   val fdiFReason = UInt(64.W)
   val fdiJumpCfg = UInt(64.W)
   val fdiJumpBound = Vec(8, UInt(64.W))
+
+  val upkru  = UInt(64.W)
+  val spkrs  = UInt(64.W)
+  val spkctl = UInt(64.W)
 }
 
 class DebugModeCSRState extends DifftestBaseBundle {
