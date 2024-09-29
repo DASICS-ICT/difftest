@@ -51,7 +51,7 @@ import difftest._
     val difftest = Module(new DifftestCSRState)
     difftest.io.clock := clock
     difftest.io.coreid := 0.U // TODO
-    difftest.io.priviledgeMode := RegNext(priviledgeMode)
+    difftest.io.privilegeMode := RegNext(privilegeMode)
     difftest.io.mstatus := RegNext(mstatus)
     difftest.io.sstatus := RegNext(mstatus & sstatusRmask)
     difftest.io.mepc := RegNext(mepc)

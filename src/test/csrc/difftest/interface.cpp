@@ -91,7 +91,7 @@ INTERFACE_INSTR_COMMIT {
 INTERFACE_CSR_STATE {
   RETURN_NO_NULL
   auto packet = difftest[coreid]->get_csr_state();
-  packet->priviledgeMode = priviledgeMode;
+  packet->privilegeMode = privilegeMode;
   packet->mstatus = mstatus;
   packet->sstatus = sstatus;
   packet->mepc = mepc;
@@ -125,12 +125,9 @@ INTERFACE_CSR_STATE {
   packet->dsmcfg = dsmcfg;
   packet->dsmbound0 = dsmbound0;
   packet->dsmbound1 = dsmbound1;
-  packet->dumcfg = dumcfg;
   packet->dumbound0 = dumbound0;
   packet->dumbound1 = dumbound1;
-  /* yet to connect
   packet->dlcfg0 = dlcfg0;
-  packet->dlcfg1 = dlcfg1;
   packet->dlbound0 = dlbound0;
   packet->dlbound1 = dlbound1;
   packet->dlbound2 = dlbound2;
@@ -163,10 +160,19 @@ INTERFACE_CSR_STATE {
   packet->dlbound29 = dlbound29;
   packet->dlbound30 = dlbound30;
   packet->dlbound31 = dlbound31;
-  */
   packet->dmaincall = dmaincall;
   packet->dretpc = dretpc;
   packet->dretpcfz = dretpcfz;
+  packet->dfreason = dfreason;
+  packet->djcfg    = djcfg;
+  packet->djbound0lo = djbound0lo;
+  packet->djbound0hi = djbound0hi;
+  packet->djbound1lo = djbound1lo;
+  packet->djbound1hi = djbound1hi;
+  packet->djbound2lo = djbound2lo;
+  packet->djbound2hi = djbound2hi;
+  packet->djbound3lo = djbound3lo;
+  packet->djbound3hi = djbound3hi;
 #endif  // DASICS_DIFF
 
 #ifdef RV_MPK_DIFF

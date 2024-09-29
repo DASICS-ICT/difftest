@@ -62,7 +62,7 @@ import difftest._
     val difftest = Module(new DifftestCSRState)
     difftest.io.clock := clock
     difftest.io.coreid := hardId.U
-    difftest.io.priviledgeMode := priviledgeMode
+    difftest.io.privilegeMode := privilegeMode
     difftest.io.mstatus := mstatus
     difftest.io.sstatus := mstatus & sstatusRmask
     difftest.io.mepc := mepc
