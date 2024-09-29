@@ -173,13 +173,11 @@ INTERFACE_CSR_STATE {
   packet->djbound2hi = djbound2hi;
   packet->djbound3lo = djbound3lo;
   packet->djbound3hi = djbound3hi;
-#endif  // DASICS_DIFF
-
-#ifdef RV_MPK_DIFF
   packet->upkru = upkru;
   packet->spkrs = spkrs;
   packet->spkctl = spkctl;
-#endif  // RV_MPK_DIFF
+#endif  // DASICS_DIFF
+
 }
 
 INTERFACE_DM_STATE {

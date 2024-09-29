@@ -131,13 +131,8 @@ typedef struct __attribute__((packed)) {
   uint64_t djcfg;
   uint64_t djbound0lo, djbound0hi, djbound1lo, djbound1hi;
   uint64_t djbound2lo, djbound2hi, djbound3lo, djbound3hi;
+  uint64_t upkru, spkrs, spkctl;
 #endif  // DASICS_DIFF
-#ifdef RV_MPK_DIFF
-  uint64_t upkru;
-  uint64_t spkrs;
-  uint64_t spkctl;
-#endif  // RV_MPK_DIFF
-
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {

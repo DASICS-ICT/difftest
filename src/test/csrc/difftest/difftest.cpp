@@ -59,12 +59,8 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dasicsJumpCfg", 
   "dasicsJumpBound0", "dasicsJumpBound1","dasicsJumpBound2", "dasicsJumpBound3", 
   "dasicsJumpBound4", "dasicsJumpBound5","dasicsJumpBound6", "dasicsJumpBound7",
-#endif  // DASICS_DIFF
-
-#ifdef RV_MPK_DIFF
-  /* RV-MPK CSRs for difftest */
   "upkru", "spkrs", "spkctl",
-#endif // RV_MPK_DIFF
+#endif  // DASICS_DIFF
 
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",

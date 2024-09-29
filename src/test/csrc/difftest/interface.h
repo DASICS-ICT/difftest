@@ -152,11 +152,9 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dsmcfg,                \
     DPIC_ARG_LONG dsmbound0,             \
     DPIC_ARG_LONG dsmbound1,             \
-    DPIC_ARG_LONG dumcfg,                \
     DPIC_ARG_LONG dumbound0,             \
     DPIC_ARG_LONG dumbound1,             \
     DPIC_ARG_LONG dlcfg0,                \
-    DPIC_ARG_LONG dlcfg1,                \
     DPIC_ARG_LONG dlbound0,              \
     DPIC_ARG_LONG dlbound1,              \
     DPIC_ARG_LONG dlbound2,              \
