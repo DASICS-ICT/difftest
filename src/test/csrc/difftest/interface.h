@@ -123,7 +123,7 @@ extern "C" int v_difftest_step();
 #define INTERFACE_CSR_STATE              \
   DIFFTEST_DPIC_FUNC_DECL(CSRState) (    \
     DPIC_ARG_BYTE coreid,                \
-    DPIC_ARG_BYTE priviledgeMode,        \
+    DPIC_ARG_BYTE privilegeMode,        \
     DPIC_ARG_LONG mstatus,               \
     DPIC_ARG_LONG sstatus,               \
     DPIC_ARG_LONG ustatus,               \
@@ -152,11 +152,9 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dsmcfg,                \
     DPIC_ARG_LONG dsmbound0,             \
     DPIC_ARG_LONG dsmbound1,             \
-    DPIC_ARG_LONG dumcfg,                \
     DPIC_ARG_LONG dumbound0,             \
     DPIC_ARG_LONG dumbound1,             \
     DPIC_ARG_LONG dlcfg0,                \
-    DPIC_ARG_LONG dlcfg1,                \
     DPIC_ARG_LONG dlbound0,              \
     DPIC_ARG_LONG dlbound1,              \
     DPIC_ARG_LONG dlbound2,              \
@@ -192,6 +190,16 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG dmaincall,             \
     DPIC_ARG_LONG dretpc,                \
     DPIC_ARG_LONG dretpcfz,              \
+    DPIC_ARG_LONG dfreason,              \
+    DPIC_ARG_LONG djcfg,                 \
+    DPIC_ARG_LONG djbound0lo,            \
+    DPIC_ARG_LONG djbound0hi,            \
+    DPIC_ARG_LONG djbound1lo,            \
+    DPIC_ARG_LONG djbound1hi,            \
+    DPIC_ARG_LONG djbound2lo,            \
+    DPIC_ARG_LONG djbound2hi,            \
+    DPIC_ARG_LONG djbound3lo,            \
+    DPIC_ARG_LONG djbound3hi,            \
     DPIC_ARG_LONG upkru,                 \
     DPIC_ARG_LONG spkrs,                 \
     DPIC_ARG_LONG spkctl                 \

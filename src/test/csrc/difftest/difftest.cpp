@@ -45,24 +45,22 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
 
 #ifdef DASICS_DIFF
   /* DASICS CSRs for difftest */
-  "dsmcfg", "dsmbound0", "dsmbound1",
-  "dumcfg", "dumbound0", "dumbound1",
-  /* yet to connect
-  "dlcfg0", "dlcfg1",
-  "dlbound0", "dlbound1", "dlbound2", "dlbound3", "dlbound4", "dlbound5",
-  "dlbound6", "dlbound7", "dlbound8", "dlbound9", "dlbound10", "dlbound11",
-  "dlbound12", "dlbound13", "dlbound14", "dlbound15", "dlbound16", "dlbound17",
-  "dlbound18", "dlbound19", "dlbound20", "dlbound21", "dlbound22", "dlbound23",
-  "dlbound24", "dlbound25", "dlbound26", "dlbound27", "dlbound28", "dlbound29",
-  "dlbound30", "dlbound31",
-  */
-  "dmaincall", "dretpc", "dretpcfz",
-#endif  // DASICS_DIFF
-
-#ifdef RV_MPK_DIFF
-  /* RV-MPK CSRs for difftest */
+  "dasicsMainCfg", "dasicsSMBoundLo", "dasicsSMBoundHi", "dasicsUMBoundLo", "dasicsUMBoundHi",
+  "dasicsLibCfg",
+  "dasicsLibBound0", "dasicsLibBound1", "dasicsLibBound2", "dasicsLibBound3",
+  "dasicsLibBound4", "dasicsLibBound5", "dasicsLibBound6", "dasicsLibBound7",
+  "dasicsLibBound8", "dasicsLibBound9", "dasicsLibBound10", "dasicsLibBound11",
+  "dasicsLibBound12", "dasicsLibBound13", "dasicsLibBound14", "dasicsLibBound15",
+  "dasicsLibBound16", "dasicsLibBound17", "dasicsLibBound18", "dasicsLibBound19",
+  "dasicsLibBound20", "dasicsLibBound21", "dasicsLibBound22", "dasicsLibBound23",
+  "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
+  "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
+  "dasicsMainCall", "dasicsReturnPC", "dasicsAZoneReturnPC", "dasicsFReason",
+  "dasicsJumpCfg", 
+  "dasicsJumpBound0", "dasicsJumpBound1","dasicsJumpBound2", "dasicsJumpBound3", 
+  "dasicsJumpBound4", "dasicsJumpBound5","dasicsJumpBound6", "dasicsJumpBound7",
   "upkru", "spkrs", "spkctl",
-#endif // RV_MPK_DIFF
+#endif  // DASICS_DIFF
 
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",
@@ -653,7 +651,7 @@ void Difftest::display() {
   printf("\n==============  REF Regs  ==============\n");
   fflush(stdout);
   proxy->isa_reg_display();
-  printf("priviledgeMode: %lu\n", dut.csr.priviledgeMode);
+  printf("privilegeMode: %lu\n", dut.csr.privilegeMode);
 }
 
 void DiffState::display(int coreid) {
