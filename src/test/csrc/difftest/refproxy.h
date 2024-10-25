@@ -47,23 +47,23 @@ static const char *regs_name_csr[] = {
   "ustatus", "ucause", "uepc", 
   "uscratch", "utval", "utvec", 
   "sedeleg", "sideleg",
-#ifdef FDI_DIFF
-  "fdiMainCfg", "fdiSMBoundLo", "fdiSMBoundHi", "fdiUMBoundLo", "fdiUMBoundHi",
-  "fdiLibCfg",
-  "fdiLibBound0", "fdiLibBound1", "fdiLibBound2", "fdiLibBound3",
-  "fdiLibBound4", "fdiLibBound5", "fdiLibBound6", "fdiLibBound7",
-  "fdiLibBound8", "fdiLibBound9", "fdiLibBound10", "fdiLibBound11",
-  "fdiLibBound12", "fdiLibBound13", "fdiLibBound14", "fdiLibBound15",
-  "fdiLibBound16", "fdiLibBound17", "fdiLibBound18", "fdiLibBound19",
-  "fdiLibBound20", "fdiLibBound21", "fdiLibBound22", "fdiLibBound23",
-  "fdiLibBound24", "fdiLibBound25", "fdiLibBound26", "fdiLibBound27",
-  "fdiLibBound28", "fdiLibBound29", "fdiLibBound30", "fdiLibBound31",
-  "fdiMainCall", "fdiReturnPC", "fdiAZoneReturnPC", "fdiFReason",
-  "fdiJumpCfg", 
-  "fdiJumpBound0", "fdiJumpBound1","fdiJumpBound2", "fdiJumpBound3", 
-  "fdiJumpBound4", "fdiJumpBound5","fdiJumpBound6", "fdiJumpBound7",
+#ifdef Dasics_DIFF
+  "dasicsMainCfg", "dasicsSMBoundLo", "dasicsSMBoundHi", "dasicsUMBoundLo", "dasicsUMBoundHi",
+  "dasicsLibCfg",
+  "dasicsLibBound0", "dasicsLibBound1", "dasicsLibBound2", "dasicsLibBound3",
+  "dasicsLibBound4", "dasicsLibBound5", "dasicsLibBound6", "dasicsLibBound7",
+  "dasicsLibBound8", "dasicsLibBound9", "dasicsLibBound10", "dasicsLibBound11",
+  "dasicsLibBound12", "dasicsLibBound13", "dasicsLibBound14", "dasicsLibBound15",
+  "dasicsLibBound16", "dasicsLibBound17", "dasicsLibBound18", "dasicsLibBound19",
+  "dasicsLibBound20", "dasicsLibBound21", "dasicsLibBound22", "dasicsLibBound23",
+  "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
+  "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
+  "dasicsMainCall", "dasicsReturnPC", "dasicsAZoneReturnPC", "dasicsFReason",
+  "dasicsJumpCfg", 
+  "dasicsJumpBound0", "dasicsJumpBound1","dasicsJumpBound2", "dasicsJumpBound3", 
+  "dasicsJumpBound4", "dasicsJumpBound5","dasicsJumpBound6", "dasicsJumpBound7",
   "upkru", "spkrs", "spkctl"
-#endif  // FDI_DIFF
+#endif  // Dasics_DIFF
 };
 
 static const char *regs_name_fp[] = {

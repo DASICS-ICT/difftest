@@ -146,10 +146,10 @@ extern unsigned long EMU_FLASH_SIZE;
 #define AUTO_RUNAHEAD_CHECKPOINT_GC_THRESHOLD 192
 
 // -----------------------------------------------------------------------
-// FDI Difftest
+// Dasics Difftest
 // -----------------------------------------------------------------------
 
-#define FDI_DIFF
+#define Dasics_DIFF
 
 // -----------------------------------------------------------------------
 // Debug mode and trigger
