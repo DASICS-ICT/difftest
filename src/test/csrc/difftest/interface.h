@@ -149,57 +149,52 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG sideleg,               \
     DPIC_ARG_LONG medeleg,               \
     DPIC_ARG_LONG sedeleg,               \
-    DPIC_ARG_LONG dsmcfg,                \
-    DPIC_ARG_LONG dsmbound0,             \
-    DPIC_ARG_LONG dsmbound1,             \
-    DPIC_ARG_LONG dumbound0,             \
-    DPIC_ARG_LONG dumbound1,             \
-    DPIC_ARG_LONG dlcfg0,                \
-    DPIC_ARG_LONG dlbound0,              \
-    DPIC_ARG_LONG dlbound1,              \
-    DPIC_ARG_LONG dlbound2,              \
-    DPIC_ARG_LONG dlbound3,              \
-    DPIC_ARG_LONG dlbound4,              \
-    DPIC_ARG_LONG dlbound5,              \
-    DPIC_ARG_LONG dlbound6,              \
-    DPIC_ARG_LONG dlbound7,              \
-    DPIC_ARG_LONG dlbound8,              \
-    DPIC_ARG_LONG dlbound9,              \
-    DPIC_ARG_LONG dlbound10,             \
-    DPIC_ARG_LONG dlbound11,             \
-    DPIC_ARG_LONG dlbound12,             \
-    DPIC_ARG_LONG dlbound13,             \
-    DPIC_ARG_LONG dlbound14,             \
-    DPIC_ARG_LONG dlbound15,             \
-    DPIC_ARG_LONG dlbound16,             \
-    DPIC_ARG_LONG dlbound17,             \
-    DPIC_ARG_LONG dlbound18,             \
-    DPIC_ARG_LONG dlbound19,             \
-    DPIC_ARG_LONG dlbound20,             \
-    DPIC_ARG_LONG dlbound21,             \
-    DPIC_ARG_LONG dlbound22,             \
-    DPIC_ARG_LONG dlbound23,             \
-    DPIC_ARG_LONG dlbound24,             \
-    DPIC_ARG_LONG dlbound25,             \
-    DPIC_ARG_LONG dlbound26,             \
-    DPIC_ARG_LONG dlbound27,             \
-    DPIC_ARG_LONG dlbound28,             \
-    DPIC_ARG_LONG dlbound29,             \
-    DPIC_ARG_LONG dlbound30,             \
-    DPIC_ARG_LONG dlbound31,             \
+    DPIC_ARG_LONG dsmbound,              \
+    DPIC_ARG_LONG dumbound,              \
+    DPIC_ARG_LONG dmbound0,              \
+    DPIC_ARG_LONG dmbound1,              \
+    DPIC_ARG_LONG dmbound2,              \
+    DPIC_ARG_LONG dmbound3,              \
+    DPIC_ARG_LONG dmbound4,              \
+    DPIC_ARG_LONG dmbound5,              \
+    DPIC_ARG_LONG dmbound6,              \
+    DPIC_ARG_LONG dmbound7,              \
+    DPIC_ARG_LONG dmbound8,              \
+    DPIC_ARG_LONG dmbound9,              \
+    DPIC_ARG_LONG dmbound10,             \
+    DPIC_ARG_LONG dmbound11,             \
+    DPIC_ARG_LONG dmbound12,             \
+    DPIC_ARG_LONG dmbound13,             \
+    DPIC_ARG_LONG dmbound14,             \
+    DPIC_ARG_LONG dmbound15,             \
+    DPIC_ARG_LONG dmbound16,             \
+    DPIC_ARG_LONG dmbound17,             \
+    DPIC_ARG_LONG dmbound18,             \
+    DPIC_ARG_LONG dmbound19,             \
+    DPIC_ARG_LONG dmbound20,             \
+    DPIC_ARG_LONG dmbound21,             \
+    DPIC_ARG_LONG dmbound22,             \
+    DPIC_ARG_LONG dmbound23,             \
+    DPIC_ARG_LONG dmbound24,             \
+    DPIC_ARG_LONG dmbound25,             \
+    DPIC_ARG_LONG dmbound26,             \
+    DPIC_ARG_LONG dmbound27,             \
+    DPIC_ARG_LONG dmbound28,             \
+    DPIC_ARG_LONG dmbound29,             \
+    DPIC_ARG_LONG dmbound30,             \
+    DPIC_ARG_LONG dmbound31,             \
     DPIC_ARG_LONG dmaincall,             \
     DPIC_ARG_LONG dretpc,                \
     DPIC_ARG_LONG dretpcfz,              \
     DPIC_ARG_LONG dfreason,              \
-    DPIC_ARG_LONG djcfg,                 \
-    DPIC_ARG_LONG djbound0lo,            \
-    DPIC_ARG_LONG djbound0hi,            \
-    DPIC_ARG_LONG djbound1lo,            \
-    DPIC_ARG_LONG djbound1hi,            \
-    DPIC_ARG_LONG djbound2lo,            \
-    DPIC_ARG_LONG djbound2hi,            \
-    DPIC_ARG_LONG djbound3lo,            \
-    DPIC_ARG_LONG djbound3hi,            \
+    DPIC_ARG_LONG djbound0,              \
+    DPIC_ARG_LONG djbound1,              \
+    DPIC_ARG_LONG djbound2,              \
+    DPIC_ARG_LONG djbound3,              \
+    DPIC_ARG_LONG djbound4,              \
+    DPIC_ARG_LONG djbound5,              \
+    DPIC_ARG_LONG djbound6,              \
+    DPIC_ARG_LONG djbound7,              \
     DPIC_ARG_LONG upkru,                 \
     DPIC_ARG_LONG spkrs,                 \
     DPIC_ARG_LONG spkctl                 \

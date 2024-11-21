@@ -45,20 +45,18 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
 
 #ifdef DASICS_DIFF
   /* DASICS CSRs for difftest */
-  "dasicsMainCfg", "dasicsSMBoundLo", "dasicsSMBoundHi", "dasicsUMBoundLo", "dasicsUMBoundHi",
-  "dasicsLibCfg",
-  "dasicsLibBound0", "dasicsLibBound1", "dasicsLibBound2", "dasicsLibBound3",
-  "dasicsLibBound4", "dasicsLibBound5", "dasicsLibBound6", "dasicsLibBound7",
-  "dasicsLibBound8", "dasicsLibBound9", "dasicsLibBound10", "dasicsLibBound11",
-  "dasicsLibBound12", "dasicsLibBound13", "dasicsLibBound14", "dasicsLibBound15",
-  "dasicsLibBound16", "dasicsLibBound17", "dasicsLibBound18", "dasicsLibBound19",
-  "dasicsLibBound20", "dasicsLibBound21", "dasicsLibBound22", "dasicsLibBound23",
-  "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
-  "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
+  "dasicsSMBound", "dasicsUMBound",
+  "dasicsMemBound0", "dasicsMemBound1", "dasicsMemBound2", "dasicsMemBound3",
+  "dasicsMemBound4", "dasicsMemBound5", "dasicsMemBound6", "dasicsMemBound7",
+  "dasicsMemBound8", "dasicsMemBound9", "dasicsMemBound10", "dasicsMemBound11",
+  "dasicsMemBound12", "dasicsMemBound13", "dasicsMemBound14", "dasicsMemBound15",
+  "dasicsMemBound16", "dasicsMemBound17", "dasicsMemBound18", "dasicsMemBound19",
+  "dasicsMemBound20", "dasicsMemBound21", "dasicsMemBound22", "dasicsMemBound23",
+  "dasicsMemBound24", "dasicsMemBound25", "dasicsMemBound26", "dasicsMemBound27",
+  "dasicsMemBound28", "dasicsMemBound29", "dasicsMemBound30", "dasicsMemBound31",
   "dasicsMainCall", "dasicsReturnPC", "dasicsAZoneReturnPC", "dasicsFReason",
-  "dasicsJumpCfg", 
-  "dasicsJumpBound0", "dasicsJumpBound1","dasicsJumpBound2", "dasicsJumpBound3", 
-  "dasicsJumpBound4", "dasicsJumpBound5","dasicsJumpBound6", "dasicsJumpBound7",
+  "dasicsJmpBound0", "dasicsJmpBound1","dasicsJmpBound2", "dasicsJmpBound3", 
+  "dasicsJmpBound4", "dasicsJmpBound5","dasicsJmpBound6", "dasicsJmpBound7",
   "upkru", "spkrs", "spkctl",
 #endif  // DASICS_DIFF
 
