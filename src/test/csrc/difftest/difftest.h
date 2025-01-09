@@ -127,7 +127,9 @@ typedef struct __attribute__((packed)) {
   uint64_t dlbound20, dlbound21, dlbound22, dlbound23;
   uint64_t dlbound24, dlbound25, dlbound26, dlbound27;
   uint64_t dlbound28, dlbound29, dlbound30, dlbound31;
-  uint64_t dmaincall, dretpc, dretpcfz, dfreason;
+  uint64_t dmaincall, dretpcfz, dfreason;
+  uint64_t dretpc0, dretpc1, dretpc2, dretpc3;
+  uint64_t dllevel, djlevel;
   uint64_t djcfg;
   uint64_t djbound0lo, djbound0hi, djbound1lo, djbound1hi;
   uint64_t djbound2lo, djbound2hi, djbound3lo, djbound3hi;

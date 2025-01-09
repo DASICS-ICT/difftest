@@ -161,9 +161,14 @@ INTERFACE_CSR_STATE {
   packet->dlbound30 = dlbound30;
   packet->dlbound31 = dlbound31;
   packet->dmaincall = dmaincall;
-  packet->dretpc = dretpc;
   packet->dretpcfz = dretpcfz;
   packet->dfreason = dfreason;
+  packet->dretpc0 = dretpc0;
+  packet->dretpc1 = dretpc1;
+  packet->dretpc2 = dretpc2;
+  packet->dretpc3 = dretpc3;
+  packet->dllevel = dllevel;
+  packet->djlevel = djlevel;
   packet->djcfg    = djcfg;
   packet->djbound0lo = djbound0lo;
   packet->djbound0hi = djbound0hi;
@@ -173,6 +178,10 @@ INTERFACE_CSR_STATE {
   packet->djbound2hi = djbound2hi;
   packet->djbound3lo = djbound3lo;
   packet->djbound3hi = djbound3hi;
+
+#endif  // DASICS_DIFF
+
+#ifdef RV_MPK_DIFF
   packet->upkru = upkru;
   packet->spkrs = spkrs;
   packet->spkctl = spkctl;

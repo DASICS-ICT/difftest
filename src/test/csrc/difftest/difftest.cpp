@@ -36,6 +36,11 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "mip", "mie", "mscratch", "sscratch", "mideleg", "medeleg",
   "mtval", "stval", "mtvec", "stvec", "mode",
 
+#ifdef RV_MPK_DIFF
+  /* RV-MPK CSRs for difftest */
+  "upkru", "spkrs", "spkctl",
+#endif // RV_MPK_DIFF
+
 #ifdef RVN_DIFF
   /* RVN Extension CSRs for difftest */
   "ustatus", "ucause", "uepc",
@@ -55,7 +60,9 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "dasicsLibBound20", "dasicsLibBound21", "dasicsLibBound22", "dasicsLibBound23",
   "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
   "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
-  "dasicsMainCall", "dasicsReturnPC", "dasicsAZoneReturnPC", "dasicsFReason",
+  "dasicsMainCall", "dasicsAZoneReturnPC", "dasicsFReason",
+  "dasicsReturnPC0", "dasicsReturnPC1", "dasicsReturnPC2", "dasicsReturnPC3",
+  "dasicsLibLevel", "dasicsJumpLevel",
   "dasicsJumpCfg", 
   "dasicsJumpBound0", "dasicsJumpBound1","dasicsJumpBound2", "dasicsJumpBound3", 
   "dasicsJumpBound4", "dasicsJumpBound5","dasicsJumpBound6", "dasicsJumpBound7",
