@@ -2,7 +2,31 @@
 
 DiffTest (差分测试): a modern co-simulation framework for RISC-V processors.
 
-## Example: Generate Verilog
+## Usage
+
+DiffTest supports the following run-time command-line arguments.
+This list is not complete as we are still working on improving the documentation.
+
+- `-i, --image=FILE` for the workload to be executed by the design-under-test (DUT)
+
+  - DiffTest supports linear (binary, gz, zstd, ELF) and footprint input formats, controlled by build-time and run-time arguments.
+
+  - By default, the image is loaded as a binary file with a linear (continuous) address space starting at 0x8000_0000.
+    This behavior is overrided if an advanced image format (gz, zstd, ELF) is detected.
+
+  - Compressed binary files in gz or zstd formats are supported, determined by leading magic numbers of the image file.
+    Once detected, they will be first decompressed and then loaded into the linear memory.
+    Use `IMAGE_GZ_COMPRESS=0` or `NO_ZSTD_COMPRESSION=1` to disable their support at build-time.
+
+  - ELF files are supported, determined by leading magic numbers of the image file. Use `IMAGE_ELF=0` to disable it at build-time.
+
+  - [Footprint inputs](https://doi.org/10.1145/3649329.3655911) are supported by the run-time argument `--as-footprints`.
+    Basically, every time when a new address is accessed by the CPU, a new data block is read from the image file and put at the accessed address.
+
+For more details on compile-time arguments, see the Makefiles.
+For more details and a full list of supported run-time command-line arguments, run `emu --help`.
+
+## Example: Generate Verilog for DiffTest Interfaces
 
 DiffTest interfaces are provided in [Chisel bundles](src/main/scala/Bundles.scala) and expected to be integrated
 into Chisel designs with auto-generated C++ interfaces.
@@ -20,10 +44,13 @@ After running the following command, files will be generated at `build`.
 make
 ```
 
-## Example Chisel Usage
+We support the DiffTest Profile as a configuration file for DiffTest to record and reconstruct DiffTest interfaces
+through a `json` file.
+
+## Example Chisel Usage: Connecting Your Own Design with DiffTest
 
 We are supporting Chisel 3.6.1 (the last version supporting Scala FIRRTL Compiler)
-as well as 6.5.0 (the latest stable version supporting MLIR FIRRTL Compiler).
+as well as 6.6.0 (the latest stable version supporting MLIR FIRRTL Compiler).
 
 Here are the detail instructions on integrating DiffTest to your own project.
 
@@ -110,7 +137,7 @@ We provide example designs, including:
 
 If you encountered any issues when integrating DiffTest to your own design, feel free to let us know with necessary information on how you have modified your design. We will try our best to assist you.
 
-## APIs
+## APIs (DiffTest Interfaces)
 
 Currently we are supporting the RISC-V base ISA as well as some extensions,
 including Float/Double, Debug, and Vector. We also support checking the cache
@@ -142,6 +169,10 @@ coherence via RefillTest.
 | `DiffRefillEvent` | Cache refill operations | No |
 | `DiffLrScEvent` | Executed LR/SC instructions | No |
 | `DiffNonRegInterruptPengingEvent` | Non-register interrupts pending | No |
+| `DiffMhpmeventOverflowEvent` | Mhpmevent-register overflow | No |
+| `DiffCriticalErrorEvent` | Raise critical-error | No |
+| `DiffSyncAIAEvent` | Synchronization of AIA | No |
+| `DiffSyncCustomMflushpwrEvent` | custom CSR mflushpwr | No |
 
 The DiffTest framework comes with a simulation framework with some top-level IOs.
 They will be automatically created when calling `DifftestModule.finish(cpu: String)`.
@@ -177,8 +208,6 @@ Please set the correct parameters for the interfaces.
 
 There are several plugins to improve the RTL-simulation and debugging process.
 
-See the Makefiles for the compilation time arguments. Run `emu --help` to see the full list of supported run-time arguments.
-
 ### LightSSS: a lightweight simulation snapshot mechanism
 
 After the simulation aborts, we require some debugging information to assist locating the root cause, such as waveform and DUT/REF logs.
@@ -213,4 +242,5 @@ Feel free to change the `--prefix=` argument to where you have access to, such a
   * [Paper 1](https://ieeexplore.ieee.org/document/9923860), [Paper 2](https://jcst.ict.ac.cn/en/article/doi/10.1007/s11390-023-3285-8)
   * SMP-DiffTest 支持多处理器的差分测试方法: [PPT](https://github.com/OpenXiangShan/XiangShan-doc/blob/main/slides/20210624-RVWC-SMP-Difftest%20%E6%94%AF%E6%8C%81%E5%A4%9A%E5%A4%84%E7%90%86%E5%99%A8%E7%9A%84%E5%B7%AE%E5%88%86%E6%B5%8B%E8%AF%95%E6%96%B9%E6%B3%95.pdf), [视频](https://www.bilibili.com/video/BV1NM4y1T7Hz/)
 * Next-generation DiffTest / DiffTest 的下一步演进
-  * DiffTest on Cadence Palladium: to be released soon
+  * DiffTest on Cadence Palladium: [Slides (in Chinese, 中文版)](https://github.com/OpenXiangShan/XiangShan-doc/raw/main/slides/20240827-CadenceLIVEChina-%E9%9D%A2%E5%90%91Palladium%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E5%A4%84%E7%90%86%E5%99%A8%E8%BD%AF%E7%A1%AC%E4%BB%B6%E5%8D%8F%E5%90%8C%E9%AA%8C%E8%AF%81%E6%A1%86%E6%9E%B6%E9%83%A8%E7%BD%B2%E4%B8%8E%E5%8A%A0%E9%80%9F%E6%96%B9%E6%B3%95.pdf)
+  * Integrating DiffTest with Coverage-Guided Fuzzing: [Slides](https://github.com/OpenXiangShan/XiangShan-doc/raw/main/slides/20241130-Finding-More-Bugs-with-DiffTest-and-XFUZZ.pdf)

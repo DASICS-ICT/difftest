@@ -17,6 +17,7 @@
 #include "ram.h"
 #include "common.h"
 #include "compress.h"
+#include "elfloader.h"
 #include <iostream>
 #include <sys/mman.h>
 #ifdef CONFIG_DIFFTEST_PERFCNT
@@ -284,6 +285,10 @@ MmapMemory::MmapMemory(const char *image, uint64_t n_bytes) : SimMemory(n_bytes)
     Info("Zstd file detected and loading image from extracted zstd file\n");
     img_size = readFromZstd(ram, image, memory_size, LOAD_RAM);
     assert(img_size >= 0);
+  } else if (isElfFile(image)) {
+    Info("ELF file detected and loading image from extracted elf file\n");
+    img_size = readFromElf(ram, image, memory_size);
+    assert(img_size >= 0);
   } else {
     InputReader *reader = createInputReader(image);
     img_size = reader->read_all(ram, memory_size);
@@ -298,7 +303,7 @@ MmapMemory::~MmapMemory() {
 #endif
 }
 
-extern "C" uint64_t difftest_ram_read(uint64_t rIdx) {
+uint64_t difftest_ram_read(uint64_t rIdx) {
 #ifdef CONFIG_DIFFTEST_PERFCNT
   difftest_calls[perf_difftest_ram_read]++;
   difftest_bytes[perf_difftest_ram_read] += 8;
@@ -316,7 +321,7 @@ extern "C" uint64_t difftest_ram_read(uint64_t rIdx) {
   return rdata;
 }
 
-extern "C" void difftest_ram_write(uint64_t wIdx, uint64_t wdata, uint64_t wmask) {
+void difftest_ram_write(uint64_t wIdx, uint64_t wdata, uint64_t wmask) {
 #ifdef CONFIG_DIFFTEST_PERFCNT
   difftest_calls[perf_difftest_ram_write]++;
   difftest_bytes[perf_difftest_ram_write] += 24;

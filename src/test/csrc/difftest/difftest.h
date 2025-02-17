@@ -19,6 +19,7 @@
 
 #include "common.h"
 #include "difftrace.h"
+#include "dut.h"
 #include "golden.h"
 #include "refproxy.h"
 #include <queue>
@@ -108,15 +109,15 @@ public:
 
 protected:
   void display_custom() {
-    printf(" wen %d dst %02d data %016lx idx %03x", wen, dest, data, robidx);
+    Info(" wen %d dst %02d data %016lx idx %03x", wen, dest, data, robidx);
     if (isLoad) {
-      printf(" (%02x)", lqidx);
+      Info(" (%02x)", lqidx);
     }
     if (isStore) {
-      printf(" (%02x)", sqidx);
+      Info(" (%02x)", sqidx);
     }
     if (tag) {
-      printf(" (%c)", tag);
+      Info(" (%c)", tag);
     }
   }
 
@@ -141,7 +142,7 @@ public:
 
 protected:
   void display_custom() {
-    printf(" cause %016lx", cause);
+    Info(" cause %016lx", cause);
   }
 };
 
@@ -221,7 +222,11 @@ public:
     return dut->trap.hasTrap;
   }
   inline int get_trap_code() {
-    return dut->trap.code;
+    if (dut->trap.code > STATE_FUZZ_COND && dut->trap.code < STATE_RUNNING) {
+      return STATE_BADTRAP;
+    } else {
+      return dut->trap.code;
+    }
   }
 
   void display();
@@ -332,7 +337,7 @@ protected:
   void store_event_record();
 #endif
 
-#ifdef CONFIG_DIFFTEST_REFILLEVENT
+#ifdef CONFIG_DIFFTEST_CMOINVALEVENT
   std::unordered_set<uint64_t> cmo_inval_event_set;
   void cmo_inval_event_record();
 #endif
@@ -341,6 +346,7 @@ protected:
     last_commit = get_trap_event()->cycleCnt;
   }
   int check_timeout();
+  int check_all();
   void do_first_instr_commit();
   void do_interrupt();
   void do_exception();
@@ -418,6 +424,18 @@ protected:
   void raise_trap(int trapCode);
 #ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
   void do_non_reg_interrupt_pending();
+#endif
+#ifdef CONFIG_DIFFTEST_MHPMEVENTOVERFLOWEVENT
+  void do_mhpmevent_overflow();
+#endif
+#ifdef CONFIG_DIFFTEST_CRITICALERROREVENT
+  void do_raise_critical_error();
+#endif
+#ifdef CONFIG_DIFFTEST_SYNCAIAEVENT
+  void do_sync_aia();
+#endif
+#ifdef CONFIG_DIFFTEST_SYNCCUSTOMMFLUSHPWREVENT
+  void do_sync_custom_mflushpwr();
 #endif
 #ifdef CONFIG_DIFFTEST_REPLAY
   struct {

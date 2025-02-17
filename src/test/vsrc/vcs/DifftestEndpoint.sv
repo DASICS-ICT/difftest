@@ -50,6 +50,8 @@ import "DPI-C" function void set_max_instrs(longint mc);
 import "DPI-C" function longint get_stuck_limit();
 import "DPI-C" function void set_overwrite_nbytes(longint len);
 import "DPI-C" function void set_overwrite_autoset();
+import "DPI-C" function void set_warmup_instr(longint instrs);
+import "DPI-C" context function void set_difftest_endpoint_scope();
 `ifdef WITH_DRAMSIM3
 import "DPI-C" function void simv_tick();
 `endif // WITH_DRAMSIM3
@@ -81,6 +83,7 @@ longint overwrite_nbytes;
 
 reg [63:0] max_instrs;
 reg [63:0] max_cycles;
+reg [63:0] warmup_instr;
 reg [63:0] stuck_limit;
 
 initial begin
@@ -100,11 +103,18 @@ initial begin
   end
   stuck_limit = 0;
 `ifndef TB_NO_DPIC
+  set_difftest_endpoint_scope();
   stuck_limit = get_stuck_limit();
   // workload: bin file
   if ($test$plusargs("workload")) begin
     $value$plusargs("workload=%s", bin_file);
     set_bin_file(bin_file);
+  end
+  // warmup for instrs
+  warmup_instr = 0;
+  if ($test$plusargs("warmup_instr")) begin
+    $value$plusargs("warmup_instr=%d", warmup_instr);
+    set_warmup_instr(warmup_instr);
   end
   // boot flash image: bin file
   if ($test$plusargs("flash")) begin
@@ -170,46 +180,9 @@ initial begin
   end
 end
 
-assign difftest_logCtrl_begin = difftest_logCtrl_begin_r;
-assign difftest_logCtrl_end = difftest_logCtrl_end_r;
-assign difftest_logCtrl_level = 0;
-assign difftest_perfCtrl_clean = 0;
-assign difftest_uart_in_ch = 8'hff;
-
-always @(posedge clock) begin
-  if (!reset && difftest_uart_out_valid) begin
-    $fwrite(32'h8000_0001, "%c", difftest_uart_out_ch);
-    $fflush();
-  end
-end
-
-`ifndef TB_NO_DPIC
-`ifdef CONFIG_DIFFTEST_DEFERRED_RESULT
-wire [7:0] simv_result;
-DeferredControl deferred(
-  .clock(clock),
-  .reset(reset),
-`ifndef CONFIG_DIFFTEST_INTERNAL_STEP
-  .step(difftest_step),
-`endif // CONFIG_DIFFTEST_INTERNAL_STEP
-  .simv_result(simv_result)
-);
-`else
-reg [7:0] simv_result;
-initial simv_result = 0;
-`endif // CONFIG_DIFFTEST_DEFERRED_RESULT
-
-`ifdef ENABLE_WORKLOAD_SWITCH
-assign workload_switch = simv_result == `SIMV_DONE;
-`endif // ENABLE_WORKLOAD_SWITCH
-`endif // TB_NO_DPIC
-
-`ifndef TB_NO_DPIC
-assign difftest_perfCtrl_dump = simv_result != 0;
-`else
-assign difftest_perfCtrl_dump = 0;
-`endif // TB_NO_DPIC
-
+/*
+ * cycle counter and stuck/max-cycle detect
+ */
 reg [63:0] n_cycles;
 reg [63:0] stuck_timer;
 always @(posedge clock) begin
@@ -236,7 +209,13 @@ always @(posedge clock) begin
       $display("No difftest Check for more than %d cycles, maybe get stuck", stuck_limit);
       $fatal;
     end
+  end
+end
 
+/*
+ * difftest exit signal check
+ */
+always @(posedge clock) begin
     // exit signal: all 1's for normal exit; others are error
     if (difftest_exit == 64'hffff_ffff_ffff_ffff) begin
       $display("The simulation exits normally");
@@ -246,13 +225,21 @@ always @(posedge clock) begin
       $display("The simulation aborts: error code 0x%x", difftest_exit);
       $fatal;
     end
+end
 
+/*
+ * progress simulation
+ */
 `ifndef TB_NO_DPIC
+always @(posedge clock) begin
+  if (!reset) begin
 `ifdef WITH_DRAMSIM3
+    /* tick DRAMSIM3 if required */
     if (n_cycles) begin
       simv_tick();
     end
 `endif // WITH_DRAMSIM3
+
     // difftest
     if (!n_cycles) begin
       if (simv_init()) begin
@@ -266,26 +253,139 @@ always @(posedge clock) begin
         end
       end
     end
-    else if (simv_result == `SIMV_FAIL) begin
+  end
+end
+
+/* simulation step control */
+`ifdef CONFIG_DIFFTEST_DEFERRED_RESULT
+wire [7:0] simv_result;
+DeferredControl deferred(
+  .clock(clock),
+  .reset(reset),
+`ifndef CONFIG_DIFFTEST_INTERNAL_STEP
+  .step(difftest_step),
+`endif // CONFIG_DIFFTEST_INTERNAL_STEP
+  .simv_result(simv_result)
+);
+`else
+reg [7:0] simv_result;
+`ifdef PALLADIUM
+/*
+ * In PALLADIUM, we delay the step signal to next cycle to make sure
+ * `simv_step` was triggered after other DPI calls, which needs more
+ * trick to be correct. Such as introducing `ping-pong buffer` to
+ * handle the delay-step, and dpics at the next cycle coming together.
+ */
+always @(posedge clock) begin
+  if (reset || simv_result == `SIMV_DONE) begin
+    simv_result <= 8'b0;
+  end
+  else begin
+    if (n_cycles && |difftest_step) begin
+      simv_result <= simv_nstep(difftest_step);
+    end
+  end
+end
+`else
+/*
+ * for other platform, we introduce a delayed difftest step
+ * mechanism to make sure all difftest state was updated properly
+ * before `simv_step()` called.
+ */
+reg [7:0] _res;
+event simv_step_event;
+// check difftest_step
+always @(posedge clock) begin
+  if (!reset) begin
+    if (n_cycles && |difftest_step) begin
+      // delay a little before trigger the simv step event
+      #0.1 -> simv_step_event;
+    end
+  end
+end
+// all difftest state was updated, step difftest by `simv_nstep()`
+always @(simv_step_event or posedge reset) begin
+  if (reset)
+    _res <= 8'b0;
+  else
+    _res <= simv_nstep(difftest_step);
+end
+// update to `simv_result` at next cycle
+always @(posedge clock) begin
+  if (reset || simv_result == `SIMV_DONE) begin
+    simv_result <= 8'b0;
+  end
+  else begin
+    simv_result <= _res;
+  end
+end
+`endif // PALLADIUM
+`endif // CONFIG_DIFFTEST_DEFERRED_RESULT
+
+/*
+ * difftest result check
+ */
+always @(posedge clock) begin
+  if (!reset) begin
+    if (simv_result == `SIMV_FAIL) begin
       $display("DIFFTEST FAILED at cycle %d", n_cycles);
       $fatal;
     end
     else if (simv_result == `SIMV_DONE) begin
       $display("DIFFTEST WORKLOAD DONE at cycle %d", n_cycles);
-`ifndef CONFIG_DIFFTEST_DEFERRED_RESULT
-      simv_result <= 8'b0;
-`endif // CONFIG_DIFFTEST_DEFERRED_RESULT
 `ifndef ENABLE_WORKLOAD_SWITCH
       $finish();
 `endif // ENABLE_WORKLOAD_SWITCH
     end
-`ifndef CONFIG_DIFFTEST_DEFERRED_RESULT
-    else if (|difftest_step) begin
-      simv_result <= simv_nstep(difftest_step);
-    end
-`endif // CONFIG_DIFFTEST_DEFERRED_RESULT
-`endif // TB_NO_DPIC
   end
 end
+`endif // TB_NO_DPIC
+
+/*
+ * workload switch
+ */
+`ifdef ENABLE_WORKLOAD_SWITCH
+assign workload_switch = simv_result == `SIMV_DONE;
+`endif // ENABLE_WORKLOAD_SWITCH
+
+/*
+ * uart output
+ */
+assign difftest_uart_in_ch = 8'hff;
+always @(posedge clock) begin
+  if (!reset && difftest_uart_out_valid) begin
+    $fwrite(32'h8000_0001, "%c", difftest_uart_out_ch);
+    $fflush();
+  end
+end
+
+/*
+ * perf/log ctrl
+ */
+reg difftest_perfCtrl_clean_r;
+assign difftest_logCtrl_begin = difftest_logCtrl_begin_r;
+assign difftest_logCtrl_end = difftest_logCtrl_end_r;
+assign difftest_logCtrl_level = 0;
+assign difftest_perfCtrl_clean = difftest_perfCtrl_clean_r;
+
+export "DPI-C" task set_perfCtrl_clean;
+task set_perfCtrl_clean();
+  difftest_perfCtrl_clean_r <= 1'b1;
+endtask
+
+always @(posedge clock) begin
+  if (reset) begin
+    difftest_perfCtrl_clean_r <= 1'b0;
+  end
+  else if (difftest_perfCtrl_clean_r) begin
+    difftest_perfCtrl_clean_r <= 1'b0;
+  end
+end
+
+`ifndef TB_NO_DPIC
+assign difftest_perfCtrl_dump = simv_result != 0;
+`else
+assign difftest_perfCtrl_dump = 0;
+`endif // TB_NO_DPIC
 
 endmodule

@@ -19,10 +19,11 @@ import chisel3._
 import chisel3.experimental.ExtModule
 import chisel3.reflect.DataMirror
 import chisel3.util._
-import difftest.DifftestModule.streamToFile
 import difftest._
 import difftest.batch.{BatchInfo, BatchIO}
+import difftest.common.FileControl
 import difftest.gateway.{GatewayConfig, GatewayResult, GatewaySinkControl}
+import difftest.util.Query
 
 import scala.collection.mutable.ListBuffer
 
@@ -66,8 +67,8 @@ abstract class DPICBase(config: GatewayConfig) extends ExtModule with HasExtModu
 
   protected val commonPorts = Seq(("clock", clock), ("enable", enable))
   def modPorts: Seq[Seq[(String, Data)]] = {
-    var ports = commonPorts
-    if (config.hasDutZone) ports ++= Seq(("dut_zone", dut_zone.get))
+    val dutZonePorts = dut_zone.map(zone => ("dut_zone", zone))
+    val ports = commonPorts ++ dutZonePorts
     ports.map(Seq(_))
   }
 
@@ -152,11 +153,10 @@ class DPIC[T <: DifftestBundle](gen: T, config: GatewayConfig) extends DPICBase(
 
   override def desiredName: String = gen.desiredModuleName
   override def modPorts: Seq[Seq[(String, Data)]] = {
-    super.modPorts ++ io.elements.toSeq.reverse.map { case (name, data) =>
-      data match {
-        case vec: Vec[_] => vec.zipWithIndex.map { case (v, i) => (s"io_${name}_$i", v) }
-        case _           => Seq((s"io_$name", data))
-      }
+    super.modPorts ++ io.elementsInSeqUInt.map { case (name, dataSeq) =>
+      val prefixName = s"io_$name"
+      val finalName = (i: Int) => if (dataSeq.length == 1) prefixName else s"${prefixName}_$i"
+      dataSeq.zipWithIndex.map { case (d, i) => (finalName(i), d) }
     }
   }
   override def dpicFuncArgs: Seq[Seq[(String, Data)]] = if (gen.bits.hasValid) {
@@ -181,7 +181,13 @@ class DPIC[T <: DifftestBundle](gen: T, config: GatewayConfig) extends DPICBase(
     val body = lhs.zip(rhs.flatten).map { case (l, r) => s"packet->$l = $r;" }
     val packetDecl = Seq(getPacketDecl(gen, "io_", config))
     val validAssign = if (!gen.bits.hasValid || gen.isFlatten) Seq() else Seq("packet->valid = true;")
-    packetDecl ++ validAssign ++ body
+    val query =
+      Seq(s"""
+             |#ifdef CONFIG_DIFFTEST_QUERY
+             |  ${Query.writeInvoke(gen)}
+             |#endif // CONFIG_DIFFTEST_QUERY
+             |""".stripMargin)
+    packetDecl ++ validAssign ++ body ++ query
   }
 
   setInline(s"$desiredName.v", moduleBody)
@@ -203,6 +209,12 @@ class DPICBatch(template: Seq[DifftestBundle], batchIO: BatchIO, config: Gateway
     unpack += getPacketDecl(gen, "", config)
     unpack += s"memcpy(packet, data, sizeof(${gen.desiredModuleName}));"
     unpack += s"data += ${elem_bytes.sum};"
+    unpack +=
+      s"""
+         |#ifdef CONFIG_DIFFTEST_QUERY
+         |  ${Query.writeInvoke(gen)}
+         |#endif // CONFIG_DIFFTEST_QUERY
+         |""".stripMargin
     unpack.toSeq.mkString("\n        ")
   }
 
@@ -210,10 +222,16 @@ class DPICBatch(template: Seq[DifftestBundle], batchIO: BatchIO, config: Gateway
 
   override def desiredName: String = "DifftestBatch"
   override def dpicFuncAssigns: Seq[String] = {
-    val bundleEnum = template.map(_.desiredModuleName.replace("Difftest", "")) ++ Seq("BatchInterval", "BatchFinish")
+    val bundleEnum = template.map(_.desiredModuleName.replace("Difftest", "")) ++ Seq("BatchStep", "BatchFinish")
     val bundleAssign = template.zipWithIndex.map { case (t, idx) =>
+      val bundleName = bundleEnum(idx)
+      val perfName = "perf_Batch_" + bundleName
       s"""
-         |    else if (id == ${bundleEnum(idx)}) {
+         |    else if (id == $bundleName) {
+         |#ifdef CONFIG_DIFFTEST_PERFCNT
+         |      dpic_calls[$perfName] += num;
+         |      dpic_bytes[$perfName] += num * ${t.getByteAlignWidth / 8};
+         |#endif // CONFIG_DIFFTEST_PERFCNT
          |      for (int j = 0; j < num; j++) {
          |        ${getDPICBundleUnpack(t)}
          |      }
@@ -247,7 +265,7 @@ class DPICBatch(template: Seq[DifftestBundle], batchIO: BatchIO, config: Gateway
            |  ${bundleEnum.mkString(",\n  ")}
            |  };
            |  extern void simv_nstep(uint8_t step);
-           |  uint32_t dut_index = 0;
+           |  static int dut_index = 0;
            |  $batchDecl
            |  for (int i = 0; i < $infoLen; i++) {
            |    uint8_t id = info[i].id;
@@ -259,8 +277,11 @@ class DPICBatch(template: Seq[DifftestBundle], batchIO: BatchIO, config: Gateway
            |#endif // CONFIG_DIFFTEST_INTERNAL_STEP
            |      break;
            |    }
-           |    else if (id == BatchInterval && i != 0) {
-           |      dut_index ++;
+           |    else if (id == BatchStep) {
+           |      dut_index = (dut_index + 1) % CONFIG_DIFFTEST_BATCH_SIZE;
+           |#ifdef CONFIG_DIFFTEST_QUERY
+           |      difftest_query_step();
+           |#endif // CONFIG_DIFFTEST_QUERY
            |      continue;
            |    }
            |    $bundleAssign
@@ -297,30 +318,38 @@ private class DummyDPICBatchWrapper(
 
 object DPIC {
   val interfaces = ListBuffer.empty[(String, String, String)]
+  private val perfs = ListBuffer.empty[String]
 
   def apply(control: GatewaySinkControl, io: Valid[DifftestBundle], config: GatewayConfig): Unit = {
-    val module = Module(new DummyDPICWrapper(chiselTypeOf(io), config))
+    val bundleType = chiselTypeOf(io)
+    Query.register(bundleType.bits, "io_")
+    val module = Module(new DummyDPICWrapper(bundleType, config))
     module.control := control
     module.io := io
     val dpic = module.dpic
     if (!interfaces.map(_._1).contains(dpic.dpicFuncName)) {
+      perfs += dpic.dpicFuncName
       val interface = (dpic.dpicFuncName, dpic.dpicFuncProto, dpic.dpicFunc)
       interfaces += interface
     }
   }
 
   def batch(template: Seq[DifftestBundle], control: GatewaySinkControl, io: BatchIO, config: GatewayConfig): Unit = {
+    Query.register(template, "")
     val module = Module(new DummyDPICBatchWrapper(template, chiselTypeOf(io), config))
     module.control := control
     module.io := io
     val dpic = module.dpic
     interfaces += ((dpic.dpicFuncName, dpic.dpicFuncProto, dpic.dpicFunc))
+    perfs += dpic.dpicFuncName
+    perfs ++= template.map("Batch_" + _.desiredModuleName.replace("Difftest", ""))
   }
 
   def collect(): GatewayResult = {
     if (interfaces.isEmpty) {
       return GatewayResult()
     }
+    Query.collect()
 
     val interfaceCpp = ListBuffer.empty[String]
     interfaceCpp += "#ifndef __DIFFTEST_DPIC_H__"
@@ -352,7 +381,7 @@ object DPIC {
         |  }
         |  inline DiffTestState* next() {
         |    DiffTestState* ret = buffer[zone_ptr] + read_ptr;
-        |    read_ptr = read_ptr + 1;
+        |    read_ptr = (read_ptr + 1) % CONFIG_DIFFTEST_BUFLEN;
         |    return ret;
         |  }
         |  inline void switch_zone() {
@@ -369,7 +398,7 @@ object DPIC {
       s"""
          |#ifdef CONFIG_DIFFTEST_PERFCNT
          |enum DIFFSTATE_PERF {
-         |  ${(interfaces.map("perf_" + _._1) ++ Seq("DIFFSTATE_PERF_NUM")).mkString(",\n  ")}
+         |  ${(perfs.toSeq.map("perf_" + _) ++ Seq("DIFFSTATE_PERF_NUM")).mkString(",\n  ")}
          |};
          |long long dpic_calls[DIFFSTATE_PERF_NUM] = {0}, dpic_bytes[DIFFSTATE_PERF_NUM] = {0};
          |#endif // CONFIG_DIFFTEST_PERFCNT
@@ -378,13 +407,14 @@ object DPIC {
     interfaceCpp += ""
     interfaceCpp += "#endif // __DIFFTEST_DPIC_H__"
     interfaceCpp += ""
-    streamToFile(interfaceCpp, "difftest-dpic.h")
+    FileControl.write(interfaceCpp, "difftest-dpic.h")
 
     interfaceCpp.clear()
     interfaceCpp += "#ifndef CONFIG_NO_DIFFTEST"
     interfaceCpp += ""
     interfaceCpp += "#include \"difftest.h\""
     interfaceCpp += "#include \"difftest-dpic.h\""
+    interfaceCpp += "#include \"difftest-query.h\""
     interfaceCpp += ""
     interfaceCpp +=
       s"""
@@ -406,6 +436,7 @@ object DPIC {
          |  diffstate_buffer = nullptr;
          |}
       """.stripMargin
+    val diffstate_perfhead = if (perfs.head.contains("Batch")) 1 else 0
     interfaceCpp +=
       s"""
          |#ifdef CONFIG_DIFFTEST_PERFCNT
@@ -418,12 +449,14 @@ object DPIC {
          |void diffstate_perfcnt_finish(long long msec) {
          |  long long calls_sum = 0, bytes_sum = 0;
          |  const char *dpic_name[DIFFSTATE_PERF_NUM] = {
-         |    ${interfaces.map("\"" + _._1 + "\"").mkString(",\n    ")}
+         |    ${perfs.map("\"" + _ + "\"").mkString(",\n    ")}
          |  };
          |  for (int i = 0; i < DIFFSTATE_PERF_NUM; i++) {
+         |    difftest_perfcnt_print(dpic_name[i], dpic_calls[i], dpic_bytes[i], msec);
+         |  }
+         |  for (int i = ${diffstate_perfhead}; i < DIFFSTATE_PERF_NUM; i++) {
          |    calls_sum += dpic_calls[i];
          |    bytes_sum += dpic_bytes[i];
-         |    difftest_perfcnt_print(dpic_name[i], dpic_calls[i], dpic_bytes[i], msec);
          |  }
          |  difftest_perfcnt_print(\"DIFFSTATE_SUM\", calls_sum, bytes_sum, msec);
          |}
@@ -433,7 +466,7 @@ object DPIC {
     interfaceCpp += ""
     interfaceCpp += "#endif // CONFIG_NO_DIFFTEST"
     interfaceCpp += ""
-    streamToFile(interfaceCpp, "difftest-dpic.cpp")
+    FileControl.write(interfaceCpp, "difftest-dpic.cpp")
 
     GatewayResult(
       cppMacros = Seq("CONFIG_DIFFTEST_DPIC"),

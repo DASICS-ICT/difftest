@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cerrno>
 #include <cinttypes>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -35,8 +36,6 @@
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
-
-#define eprintf(...) fprintf(stdout, ##__VA_ARGS__)
 
 #ifdef WITH_DRAMSIM3
 #include "cosimulation.h"
@@ -53,6 +52,8 @@ typedef uint64_t vaddr_t;
 typedef uint16_t ioaddr_t;
 
 extern bool sim_verbose;
+
+int eprintf(const char *fmt, ...);
 
 #define Info(...)           \
   do {                      \
@@ -95,8 +96,14 @@ void common_init(const char *program_name);
 void common_init_without_assertion(const char *program_name);
 void common_enable_assert();
 
+// Enable external log system
+typedef int (*eprintf_handle_t)(const char *fmt, va_list ap);
+extern "C" void common_enable_log(eprintf_handle_t h);
+
 void common_finish();
 
 uint32_t uptime(void);
 
+extern "C" void xs_assert(long long line);
+extern "C" void xs_assert_v2(const char *filename, long long line);
 #endif // __COMMON_H

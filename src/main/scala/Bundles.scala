@@ -95,7 +95,7 @@ class TrapEvent extends DifftestBaseBundle {
   val instrCnt = UInt(64.W)
   val hasWFI = Bool()
 
-  val code = UInt(32.W)
+  val code = UInt(64.W)
   val pc = UInt(64.W)
 
   override def needUpdate: Option[Bool] = Some(hasTrap || hasWFI)
@@ -251,6 +251,8 @@ class StoreEvent extends DifftestBaseBundle with HasValid {
   val addr = UInt(64.W)
   val data = UInt(64.W)
   val mask = UInt(8.W)
+  val pc = UInt(64.W)
+  val robidx = UInt(10.W)
 }
 
 class LoadEvent extends DifftestBaseBundle with HasValid {
@@ -262,10 +264,11 @@ class LoadEvent extends DifftestBaseBundle with HasValid {
 
 class AtomicEvent extends DifftestBaseBundle with HasValid {
   val addr = UInt(64.W)
-  val data = UInt(64.W)
-  val mask = UInt(8.W)
+  val data = Vec(2, UInt(64.W))
+  val mask = UInt(16.W)
+  val cmp = Vec(2, UInt(64.W))
   val fuop = UInt(8.W)
-  val out = UInt(64.W)
+  val out = Vec(2, UInt(64.W))
 }
 
 class CMOInvalEvent extends DifftestBaseBundle with HasValid {
@@ -337,11 +340,32 @@ class NonRegInterruptPendingEvent extends DifftestBaseBundle with HasValid {
   val platformIRPStip = Bool()
   val platformIRPVseip = Bool()
   val platformIRPVstip = Bool()
+  val fromAIAMeip = Bool()
+  val fromAIASeip = Bool()
   val localCounterOverflowInterruptReq = Bool()
+}
+
+class MhpmeventOverflowEvent extends DifftestBaseBundle with HasValid {
+  val mhpmeventOverflow = UInt(64.W)
 }
 
 class TraceInfo extends DifftestBaseBundle with HasValid {
   val in_replay = Bool()
   val trace_head = UInt(16.W)
   val trace_size = UInt(16.W)
+}
+
+class CriticalErrorEvent extends DifftestBaseBundle with HasValid {
+  val criticalError = Bool()
+}
+
+class AIAEvent extends DifftestBaseBundle with HasValid {
+  val mtopei = UInt(64.W)
+  val stopei = UInt(64.W)
+  val vstopei = UInt(64.W)
+  val hgeip = UInt(64.W)
+}
+
+class SyncCustomMflushpwrEvent extends DifftestBaseBundle with HasValid {
+  val l2FlushDone = Bool()
 }

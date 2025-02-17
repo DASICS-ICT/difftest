@@ -19,10 +19,17 @@
 
 #include "common.h"
 
-char *get_flash_path();
-long get_flash_size();
+struct flash_device_t {
+  uint64_t *base;
+  uint64_t size;
+  char *img_path;
+  uint64_t img_size;
+};
+
+extern flash_device_t flash_dev;
 
 void init_flash(const char *flash_bin);
 void flash_finish();
 
+extern "C" void flash_read(uint32_t addr, uint64_t *data);
 #endif // __FLASH_H

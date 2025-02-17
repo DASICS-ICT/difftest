@@ -24,6 +24,7 @@
 
 // REF Models
 extern "C" uint8_t pte_helper(uint64_t satp, uint64_t vpn, uint64_t *pte, uint8_t *level);
+extern "C" uint64_t amo_helper(uint8_t cmd, uint64_t addr, uint64_t wdata, uint8_t mask);
 
 typedef union PageTableEntry {
   struct {
@@ -68,4 +69,5 @@ typedef union atpStruct {
 #define VPNiSHFT(i)         (12 + 9 * (i))
 #define GVPNi(addr, i, max) (((addr) >> (9 * (i) + 12)) & ((i == 3 || (i == 2 && max == 2)) ? 0x7ff : 0x1ff))
 #define VPNi(vpn, i)        (((vpn) >> (9 * (i))) & 0x1ff)
+#define NAPOTSHFT           (12 + 4) // only support 64kb page
 #endif

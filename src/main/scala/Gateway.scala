@@ -21,6 +21,7 @@ import difftest._
 import difftest.common.DifftestWiring
 import difftest.util.Delayer
 import difftest.dpic.DPIC
+import difftest.preprocess.Preprocess
 import difftest.squash.Squash
 import difftest.batch.{Batch, BatchIO}
 import difftest.replay.Replay
@@ -38,7 +39,7 @@ case class GatewayConfig(
   replaySize: Int = 1024,
   hasDutZone: Boolean = false,
   isBatch: Boolean = false,
-  batchSize: Int = 32,
+  batchSize: Int = 64,
   hasInternalStep: Boolean = false,
   isNonBlock: Boolean = false,
   hasBuiltInPerf: Boolean = false,
@@ -53,7 +54,9 @@ case class GatewayConfig(
   def dutBufLen: Int = if (isBatch) batchSize else 1
   def maxStep: Int = if (isBatch) batchSize else 1
   def stepWidth: Int = log2Ceil(maxStep + 1)
-  def batchArgByteLen: (Int, Int) = if (isNonBlock) (3900, 100) else (7800, 200)
+  def replayWidth: Int = log2Ceil(replaySize + 1)
+  def batchArgByteLen: (Int, Int) = if (isNonBlock || isFPGA) (3600, 400) else (7200, 800)
+  def batchSplit: Boolean = !isFPGA // Disable split for FPGA to reduce gates
   def hasDeferredResult: Boolean = isNonBlock || hasInternalStep
   def needTraceInfo: Boolean = hasReplay
   def needEndpoint: Boolean =
@@ -206,7 +209,7 @@ class GatewayEndpoint(instanceWithDelay: Seq[(DifftestBundle, Int)], config: Gat
   }
 
   val preprocessed = if (config.needPreprocess) {
-    WireInit(Preprocess(bundle, config))
+    WireInit(Preprocess(bundle))
   } else {
     WireInit(bundle)
   }
@@ -266,6 +269,17 @@ object GatewaySink {
       case "dpic" => DPIC.batch(template, control, io, config)
       case _      => DPIC.batch(template, control, io, config) // Default: DPI-C
     }
+    val out = Option.when(config.isFPGA) {
+      IO(new Bundle {
+        val batch = Output(chiselTypeOf(io))
+        val enable = Output(Bool())
+      })
+    }
+    if (config.isFPGA) {
+      out.get.batch := io
+      out.get.enable := control.enable
+      dontTouch(out.get)
+    }
   }
 
   def collect(config: GatewayConfig): GatewayResult = {
@@ -279,72 +293,6 @@ object GatewaySink {
 class GatewaySinkControl(config: GatewayConfig) extends Bundle {
   val enable = Bool()
   val dut_zone = Option.when(config.hasDutZone)(UInt(config.dutZoneWidth.W))
-}
-
-object Preprocess {
-  def apply(bundles: MixedVec[DifftestBundle], config: GatewayConfig): MixedVec[DifftestBundle] = {
-    val module = Module(new Preprocess(chiselTypeOf(bundles).toSeq, config))
-    module.in := bundles
-    module.out
-  }
-  def getCommitData(
-    bundles: MixedVec[DifftestBundle],
-    commits: Seq[DiffInstrCommit],
-    wbName: String,
-    regName: String,
-  ): Seq[UInt] = {
-    if (bundles.exists(_.desiredCppName == regName)) {
-      if (bundles.exists(_.desiredCppName == wbName)) {
-        val numCores = bundles.count(_.isUniqueIdentifier)
-        val writeBacks = bundles.filter(_.desiredCppName == wbName).map(_.asInstanceOf[DiffIntWriteback])
-        val phyRf = Reg(Vec(numCores, Vec(writeBacks.head.numElements, UInt(64.W))))
-        for (wb <- writeBacks) {
-          when(wb.valid) {
-            phyRf(wb.coreid)(wb.address) := wb.data
-          }
-        }
-        commits.map { c =>
-          val data = WireInit(phyRf(c.coreid)(c.wpdest))
-          for (wb <- writeBacks) { // Consider WriteBack valid in same cycle
-            when(wb.valid && wb.coreid === c.coreid && wb.address === c.wpdest) {
-              data := wb.data
-            }
-          }
-          data
-        }
-      } else {
-        val archRf = VecInit(bundles.filter(_.desiredCppName == regName).map(_.asInstanceOf[ArchIntRegState]).toSeq)
-        commits.map { c => archRf(c.coreid).value(c.wdest) }
-      }
-    } else {
-      Seq.fill(commits.length)(0.U)
-    }
-  }
-}
-
-class Preprocess(bundles: Seq[DifftestBundle], config: GatewayConfig) extends Module {
-  val in = IO(Input(MixedVec(bundles)))
-
-  // Special fix of writeback for get_commit_data
-  // We use physical WriteBack for compare when load and MMIO, and record commit instr trace
-  // As there are multiple DUT buffer in software side, writeBacks transferred and used may not in the same buffer
-  // So we buffer writeBacks until instrCommit, and submit corresponding data
-  val commits = in.filter(_.desiredCppName == "commit").map(_.asInstanceOf[DiffInstrCommit]).toSeq
-  val fpData = Preprocess.getCommitData(in, commits, "wb_fp", "regs_fp")
-  val vecData = Preprocess.getCommitData(in, commits, "wb_vec", "regs_vec")
-  val intData = Preprocess.getCommitData(in, commits, "wb_int", "regs_int")
-  val commitData = commits.zip(fpData).zip(vecData).zip(intData).map { case (((c, f), v), i) =>
-    val cd = WireInit(0.U.asTypeOf(new DiffCommitData))
-    cd.coreid := c.coreid
-    cd.index := c.index
-    cd.valid := c.valid
-    cd.data := Mux(c.fpwen, f, Mux(c.vecwen, v, i))
-    cd
-  }
-
-  val withCommitData = MixedVecInit((in.filterNot(_.desiredCppName.contains("wb")) ++ commitData).toSeq)
-  val out = IO(Output(chiselTypeOf(withCommitData)))
-  out := withCommitData
 }
 
 class ZoneControl(config: GatewayConfig) extends Module {

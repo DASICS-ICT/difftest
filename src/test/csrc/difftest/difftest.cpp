@@ -21,12 +21,15 @@
 #include "goldenmem.h"
 #include "ram.h"
 #include "spikedasm.h"
-#ifdef CONFIG_DIFFTEST_SQUASH
+#if defined(CONFIG_DIFFTEST_SQUASH) && !defined(CONFIG_PLATFORM_FPGA)
 #include "svdpi.h"
-#endif // CONFIG_DIFFTEST_SQUASH
+#endif // CONFIG_DIFFTEST_SQUASH && !CONFIG_PLATFORM_FPGA
 #ifdef CONFIG_DIFFTEST_PERFCNT
 #include "perf.h"
 #endif // CONFIG_DIFFTEST_PERFCNT
+#ifdef CONFIG_DIFFTEST_QUERY
+#include "query.h"
+#endif // CONFIG_DIFFTEST_QUERY
 
 Difftest **difftest = NULL;
 
@@ -37,6 +40,9 @@ int difftest_init() {
 #ifdef CONFIG_DIFFTEST_IOTRACE
   difftest_iotrace_init();
 #endif // CONFIG_DIFFTEST_IOTRACE
+#ifdef CONFIG_DIFFTEST_QUERY
+  difftest_query_init();
+#endif // CONFIG_DIFFTEST_QUERY
   diffstate_buffer_init();
   difftest = new Difftest *[NUM_CORES];
   for (int i = 0; i < NUM_CORES; i++) {
@@ -66,7 +72,9 @@ int difftest_state() {
 }
 
 int difftest_nstep(int step, bool enable_diff) {
+#if CONFIG_DIFFTEST_ZONESIZE > 1
   difftest_switch_zone();
+#endif // CONFIG_DIFFTEST_ZONESIZE
   for (int i = 0; i < step; i++) {
     if (enable_diff) {
       if (difftest_step())
@@ -93,6 +101,9 @@ void difftest_set_dut() {
 }
 int difftest_step() {
   difftest_set_dut();
+#if defined(CONFIG_DIFFTEST_QUERY) && !defined(CONFIG_DIFFTEST_BATCH)
+  difftest_query_step();
+#endif // CONFIG_DIFFTEST_QUERY
   for (int i = 0; i < NUM_CORES; i++) {
     int ret = difftest[i]->step();
     if (ret) {
@@ -122,6 +133,9 @@ void difftest_finish() {
 #ifdef CONFIG_DIFFTEST_IOTRACE
   difftest_iotrace_free();
 #endif // CONFIG_DIFFTEST_IOTRACE
+#ifdef CONFIG_DIFFTEST_QUERY
+  difftest_query_finish();
+#endif // CONFIG_DIFFTEST_QUERY
   diffstate_buffer_free();
   for (int i = 0; i < NUM_CORES; i++) {
     delete difftest[i];
@@ -130,7 +144,7 @@ void difftest_finish() {
   difftest = NULL;
 }
 
-#ifdef CONFIG_DIFFTEST_SQUASH
+#if defined(CONFIG_DIFFTEST_SQUASH) && !defined(CONFIG_PLATFORM_FPGA)
 svScope squashScope;
 void set_squash_scope() {
   squashScope = svGetScope();
@@ -145,7 +159,7 @@ void difftest_squash_enable(int enable) {
   svSetScope(squashScope);
   set_squash_enable(enable);
 }
-#endif // CONFIG_DIFFTEST_SQUASH
+#endif // CONFIG_DIFFTEST_SQUASH && !CONFIG_PLATFORM_FPGA
 
 #ifdef CONFIG_DIFFTEST_REPLAY
 svScope replayScope;
@@ -196,13 +210,14 @@ void Difftest::update_nemuproxy(int coreid, size_t ram_size = 0) {
 #ifdef CONFIG_DIFFTEST_REPLAY
 bool Difftest::can_replay() {
   auto info = dut->trace_info;
-  return !info.in_replay && info.trace_size > 1;
+  return info.valid && !info.in_replay && info.trace_size > 1;
 }
 
 bool Difftest::in_replay_range() {
-  if (dut->trace_info.trace_size > 1)
+  auto info = dut->trace_info;
+  if (!info.valid || !info.in_replay || info.trace_size > 1)
     return false;
-  int pos = dut->trace_info.trace_head;
+  int pos = info.trace_head;
   int head = replay_status.trace_head;
   int tail = (head + replay_status.trace_size - 1) % CONFIG_DIFFTEST_REPLAY_SIZE;
   if (tail < head) { // consider ring queue
@@ -223,33 +238,65 @@ void Difftest::replay_snapshot() {
 }
 
 void Difftest::do_replay() {
+  auto info = dut->trace_info;
   replay_status.in_replay = true;
-  replay_status.trace_head = dut->trace_info.trace_head;
-  replay_status.trace_size = dut->trace_info.trace_size;
+  replay_status.trace_head = info.trace_head;
+  replay_status.trace_size = info.trace_size;
   memcpy(state, state_ss, sizeof(DiffState));
   memcpy(&proxy->regs_int, proxy_reg_ss, proxy_reg_size);
   proxy->ref_regcpy(&proxy->regs_int, DUT_TO_REF, false);
   proxy->ref_csrcpy(squash_csr_buf, DUT_TO_REF);
   proxy->ref_store_log_restore();
   goldenmem_store_log_restore();
-  difftest_replay_head(dut->trace_info.trace_head);
+  difftest_replay_head(info.trace_head);
+  // clear buffered queue
+#ifdef CONFIG_DIFFTEST_STOREEVENT
+  while (!store_event_queue.empty())
+    store_event_queue.pop();
+#endif // CONFIG_DIFFTEST_STOREEVENT
+#if defined(CONFIG_DIFFTEST_LOADEVENT) && defined(CONFIG_DIFFTEST_SQUASH)
+  while (!load_event_queue.empty())
+    load_event_queue.pop();
+#endif
 }
 #endif // CONFIG_DIFFTEST_REPLAY
 
 int Difftest::step() {
-  progress = false;
-
 #ifdef CONFIG_DIFFTEST_REPLAY
-  if (replay_status.in_replay && !in_replay_range()) {
-    return 0;
+  static int replay_step = 0;
+  if (replay_status.in_replay) {
+    if (!in_replay_range()) {
+      return 0;
+    } else {
+      replay_step++;
+      if (replay_step > replay_status.trace_size) {
+        Info("*** DUT run out of replay range, failed to get error location ***\n");
+        return 1;
+      }
+    }
   }
-  if (can_replay()) {
+  bool canReplay = can_replay();
+  if (canReplay) {
     replay_snapshot();
   } else {
     proxy->set_store_log(false);
     goldenmem_set_store_log(false);
   }
+  int ret = check_all();
+  if (ret && canReplay) {
+    Info("\n**** Start replay for more accurate error location ****\n");
+    do_replay();
+    return 0;
+  } else {
+    return ret;
+  }
+#else
+  return check_all();
 #endif // CONFIG_DIFFTEST_REPLAY
+}
+
+inline int Difftest::check_all() {
+  progress = false;
 
   if (check_timeout()) {
     return 1;
@@ -274,9 +321,9 @@ int Difftest::step() {
   }
 #endif
 
-#ifdef CONFIG_DIFFTEST_REFILLEVENT
+#ifdef CONFIG_DIFFTEST_CMOINVALEVENT
   cmo_inval_event_record();
-#endif
+#endif // CONFIG_DIFFTEST_CMOINVALEVENT
 
   if (!has_commit) {
     return 0;
@@ -322,6 +369,19 @@ int Difftest::step() {
 
 #ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
   do_non_reg_interrupt_pending();
+#endif
+
+#ifdef CONFIG_DIFFTEST_MHPMEVENTOVERFLOWEVENT
+  do_mhpmevent_overflow();
+#endif
+#ifdef CONFIG_DIFFTEST_CRITICALERROREVENT
+  do_raise_critical_error();
+#endif
+#ifdef CONFIG_DIFFTEST_SYNCAIAEVENT
+  do_sync_aia();
+#endif
+#ifdef CONFIG_DIFFTEST_SYNCCUSTOMMFLUSHPWREVENT
+  do_sync_custom_mflushpwr();
 #endif
 
   num_commit = 0; // reset num_commit this cycle to 0
@@ -382,12 +442,6 @@ int Difftest::step() {
       return 0;
     }
 #endif
-#ifdef CONFIG_DIFFTEST_REPLAY
-    if (can_replay()) {
-      do_replay();
-      return 0;
-    }
-#endif // CONFIG_DIFFTEST_REPLAY
     display();
     proxy->display(dut);
 #ifdef FUZZER_LIB
@@ -522,13 +576,12 @@ int Difftest::do_instr_commit(int i) {
   }
 #endif
 
-  bool realWen = (dut->commit[i].rfwen && dut->commit[i].wdest != 0) || (dut->commit[i].fpwen);
-
   // MMIO accessing should not be a branch or jump, just +2/+4 to get the next pc
   // to skip the checking of an instruction, just copy the reg state to reference design
   if (dut->commit[i].skip || (DEBUG_MODE_SKIP(dut->commit[i].valid, dut->commit[i].pc, dut->commit[i].inst))) {
     // We use the physical register file to get wdata
-    proxy->skip_one(dut->commit[i].isRVC, realWen, dut->commit[i].wdest, get_commit_data(i));
+    proxy->skip_one(dut->commit[i].isRVC, (dut->commit[i].rfwen && dut->commit[i].wdest != 0), dut->commit[i].fpwen,
+                    dut->commit[i].vecwen, dut->commit[i].wdest, get_commit_data(i));
     return 0;
   }
 
@@ -559,7 +612,7 @@ void Difftest::do_first_instr_commit() {
     has_commit = 1;
     nemu_this_pc = FIRST_INST_ADDRESS;
 
-    proxy->load_flash_bin(get_flash_path(), get_flash_size());
+    proxy->flash_init((const uint8_t *)flash_dev.base, flash_dev.img_size, flash_dev.img_path);
     simMemory->clone_on_demand(
         [this](uint64_t offset, void *src, size_t n) {
           uint64_t dest_addr = PMEM_BASE + offset;
@@ -684,10 +737,15 @@ int Difftest::do_store_check() {
         return 0;
       }
 #endif
+      uint64_t pc = store_event.pc;
       display();
-      printf("Mismatch for store commits \n");
-      printf("  REF commits addr 0x%lx, data 0x%lx, mask 0x%x\n", addr, data, mask);
-      printf("  DUT commits addr 0x%lx, data 0x%lx, mask 0x%x\n", store_event.addr, store_event.data, store_event.mask);
+
+      Info("\n==============  Store Commit Event (Core %d)  ==============\n", this->id);
+      proxy->get_store_event_other_info(&pc);
+      Info("Mismatch for store commits \n");
+      Info("  REF commits addr 0x%016lx, data 0x%016lx, mask 0x%04x, pc 0x%016lx\n", addr, data, mask, pc);
+      Info("  DUT commits addr 0x%016lx, data 0x%016lx, mask 0x%04x, pc 0x%016lx, robidx 0x%x\n", store_event.addr,
+           store_event.data, store_event.mask, store_event.pc, store_event.robidx);
 
       store_event_queue.pop();
       return 1;
@@ -733,42 +791,46 @@ int Difftest::do_refill_check(int cacheid) {
     for (int i = 0; i < 8; i++) {
       read_goldenmem(dut_refill->addr + i * 8, &buf, 8);
       if (dut_refill->data[i] != *((uint64_t *)buf)) {
+#ifdef CONFIG_DIFFTEST_CMOINVALEVENT
         if (cmo_inval_event_set.find(dut_refill->addr) != cmo_inval_event_set.end()) {
           // If the data inconsistency occurs in the cache block operated by CBO.INVAL,
           // it is considered reasonable and the DUT data is used to update goldenMem.
-          printf("INFO: Sync GoldenMem using refill Data from DUT (Because of CBO.INVAL):\n");
-          printf("      cacheid=%d, addr: %lx\n      Gold: ", cacheid, dut_refill->addr);
+          Info("INFO: Sync GoldenMem using refill Data from DUT (Because of CBO.INVAL):\n");
+          Info("      cacheid=%d, addr: %lx\n      Gold: ", cacheid, dut_refill->addr);
           for (int j = 0; j < 8; j++) {
             read_goldenmem(dut_refill->addr + j * 8, &buf, 8);
-            printf("%016lx", *((uint64_t *)buf));
+            Info("%016lx", *((uint64_t *)buf));
           }
-          printf("\n      Core: ");
+          Info("\n      Core: ");
           for (int j = 0; j < 8; j++) {
-            printf("%016lx", dut_refill->data[j]);
+            Info("%016lx", dut_refill->data[j]);
           }
-          printf("\n");
+          Info("\n");
           update_goldenmem(dut_refill->addr, dut_refill->data, 0xffffffffffffffffUL, 64);
           proxy->ref_memcpy(dut_refill->addr, dut_refill->data, 64, DUT_TO_REF);
           cmo_inval_event_set.erase(dut_refill->addr);
           return 0;
         } else {
-          printf("cacheid=%d,idtfr=%d,realpaddr=0x%lx: Refill test failed!\n", cacheid, dut_refill->idtfr, realpaddr);
-          printf("addr: %lx\nGold: ", dut_refill->addr);
+#endif // CONFIG_DIFFTEST_CMOINVALEVENT
+          Info("cacheid=%d,idtfr=%d,realpaddr=0x%lx: Refill test failed!\n", cacheid, dut_refill->idtfr, realpaddr);
+          Info("addr: %lx\nGold: ", dut_refill->addr);
           for (int j = 0; j < 8; j++) {
             read_goldenmem(dut_refill->addr + j * 8, &buf, 8);
-            printf("%016lx", *((uint64_t *)buf));
+            Info("%016lx", *((uint64_t *)buf));
           }
-          printf("\nCore: ");
+          Info("\nCore: ");
           for (int j = 0; j < 8; j++) {
-            printf("%016lx", dut_refill->data[j]);
+            Info("%016lx", dut_refill->data[j]);
           }
-          printf("\n");
+          Info("\n");
           // continue run some cycle before aborted to dump wave
           if (delay == 0) {
             delay = 1;
           }
           return 0;
+#ifdef CONFIG_DIFFTEST_CMOINVALEVENT
         }
+#endif // CONFIG_DIFFTEST_CMOINVALEVENT
       }
     }
   }
@@ -837,6 +899,7 @@ int Difftest::do_l1tlb_check() {
     uint64_t paddr;
     uint8_t difftest_level;
     r_s2xlate r_s2;
+    bool isNapot = false;
 
     Satp *satp = (Satp *)&dut->l1tlb[i].satp;
     Satp *vsatp = (Satp *)&dut->l1tlb[i].vsatp;
@@ -857,6 +920,9 @@ int Difftest::do_l1tlb_check() {
         if (hasAllStage) {
           r_s2 = do_s2xlate(hgatp, paddr);
           uint64_t pg_mask = ((1ull << VPNiSHFT(r_s2.level)) - 1);
+          if (r_s2.level == 0 && r_s2.pte.n) {
+            pg_mask = ((1ull << NAPOTSHFT) - 1);
+          }
           pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
           paddr = pg_base | (paddr & PAGE_MASK);
         }
@@ -869,20 +935,31 @@ int Difftest::do_l1tlb_check() {
       if (difftest_level > 0 && pte.v) {
         uint64_t pg_mask = ((1ull << VPNiSHFT(difftest_level)) - 1);
         pg_base = (pte.ppn << 12 & ~pg_mask) | (dut->l1tlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
+      } else if (difftest_level == 0 && pte.n) {
+        isNapot = true;
+        uint64_t pg_mask = ((1ull << NAPOTSHFT) - 1);
+        pg_base = (pte.ppn << 12 & ~pg_mask) | (dut->l1tlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
       }
       if (hasAllStage && pte.v) {
         r_s2 = do_s2xlate(hgatp, pg_base);
         pte = r_s2.pte;
         difftest_level = r_s2.level;
+        if (difftest_level == 0 && pte.n) {
+          isNapot = true;
+        }
       }
     }
-
-    dut->l1tlb[i].ppn = dut->l1tlb[i].ppn >> difftest_level * 9 << difftest_level * 9;
+    if (isNapot) {
+      dut->l1tlb[i].ppn = dut->l1tlb[i].ppn >> 4 << 4;
+      pte.difftest_ppn = pte.difftest_ppn >> 4 << 4;
+    } else {
+      dut->l1tlb[i].ppn = dut->l1tlb[i].ppn >> difftest_level * 9 << difftest_level * 9;
+    }
     if (pte.difftest_ppn != dut->l1tlb[i].ppn) {
-      printf("Warning: l1tlb resp test of core %d index %d failed! vpn = %lx\n", id, i, dut->l1tlb[i].vpn);
-      printf("  REF commits pte.val: 0x%lx, dut s2xlate: %d\n", pte.val, dut->l1tlb[i].s2xlate);
-      printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut->l1tlb[i].ppn);
-      printf("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
+      Info("Warning: l1tlb resp test of core %d index %d failed! vpn = %lx\n", id, i, dut->l1tlb[i].vpn);
+      Info("  REF commits pte.val: 0x%lx, dut s2xlate: %d\n", pte.val, dut->l1tlb[i].s2xlate);
+      Info("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut->l1tlb[i].ppn);
+      Info("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
       return 0;
     }
   }
@@ -950,18 +1027,18 @@ int Difftest::do_l2tlb_check() {
                                               r_s2.level != dut->l2tlb[i].g_level || difftest_gpf != dut->l2tlb[i].gpf
                                         : false;
         if (s1_check_fail || s2_check_fail) {
-          printf("Warning: L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j,
-                 dut->l2tlb[i].vpn + j);
-          printf("  REF commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", pte.difftest_ppn, pte.difftest_perm,
-                 difftest_level, difftest_pf);
+          Info("Warning: L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j,
+               dut->l2tlb[i].vpn + j);
+          Info("  REF commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", pte.difftest_ppn, pte.difftest_perm,
+               difftest_level, difftest_pf);
           if (hasS2xlate)
-            printf("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", r_s2.pte.difftest_ppn,
-                   r_s2.pte.difftest_perm, r_s2.level, difftest_gpf);
-          printf("  DUT commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", dut->l2tlb[i].ppn[j], dut->l2tlb[i].perm,
-                 dut->l2tlb[i].level, dut->l2tlb[i].pf);
+            Info("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", r_s2.pte.difftest_ppn,
+                 r_s2.pte.difftest_perm, r_s2.level, difftest_gpf);
+          Info("  DUT commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", dut->l2tlb[i].ppn[j], dut->l2tlb[i].perm,
+               dut->l2tlb[i].level, dut->l2tlb[i].pf);
           if (hasS2xlate)
-            printf("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", dut->l2tlb[i].s2ppn, dut->l2tlb[i].g_perm,
-                   dut->l2tlb[i].g_level, dut->l2tlb[i].gpf);
+            Info("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", dut->l2tlb[i].s2ppn, dut->l2tlb[i].g_perm,
+                 dut->l2tlb[i].g_level, dut->l2tlb[i].gpf);
           return 1;
         }
       }
@@ -971,23 +1048,24 @@ int Difftest::do_l2tlb_check() {
   return 0;
 }
 
-inline int handle_atomic(int coreid, uint64_t atomicAddr, uint64_t atomicData, uint64_t atomicMask, uint8_t atomicFuop,
-                         uint64_t atomicOut) {
+inline int handle_atomic(int coreid, uint64_t atomicAddr, uint64_t atomicData[], uint64_t atomicMask,
+                         uint64_t atomicCmp[], uint8_t atomicFuop, uint64_t atomicOut[]) {
   // We need to do atmoic operations here so as to update goldenMem
-  if (!(atomicMask == 0xf || atomicMask == 0xf0 || atomicMask == 0xff)) {
-    printf("Unrecognized mask: %lx\n", atomicMask);
+  if (!(atomicMask == 0xf || atomicMask == 0xf0 || atomicMask == 0xff || atomicMask == 0xffff)) {
+    Info("Unrecognized mask: %lx\n", atomicMask);
     return 1;
   }
 
   if (atomicMask == 0xff) {
-    uint64_t rs = atomicData; // rs2
-    uint64_t t = atomicOut;   // original value
+    uint64_t rs = atomicData[0]; // rs2
+    uint64_t t = atomicOut[0];   // original value
+    uint64_t cmp = atomicCmp[0]; // rd, data to be compared
     uint64_t ret;
     uint64_t mem;
     read_goldenmem(atomicAddr, &mem, 8);
     if (mem != t && atomicFuop != 007 && atomicFuop != 003) { // ignore sc_d & lr_d
-      printf("Core %d atomic instr mismatch goldenMem, mem: 0x%lx, t: 0x%lx, op: 0x%x, addr: 0x%lx\n", coreid, mem, t,
-             atomicFuop, atomicAddr);
+      Info("Core %d atomic instr mismatch goldenMem, mem: 0x%lx, t: 0x%lx, op: 0x%x, addr: 0x%lx\n", coreid, mem, t,
+           atomicFuop, atomicAddr);
       return 1;
     }
     switch (atomicFuop) {
@@ -1018,14 +1096,18 @@ inline int handle_atomic(int coreid, uint64_t atomicAddr, uint64_t atomicData, u
       case 047: ret = (t < rs) ? t : rs; break;
       case 052:
       case 053: ret = (t > rs) ? t : rs; break;
-      default: printf("Unknown atomic fuOpType: 0x%x\n", atomicFuop);
+      case 054:
+      case 056:
+      case 057: ret = (t == cmp) ? rs : t; break;
+      default: Info("Unknown atomic fuOpType: 0x%x\n", atomicFuop);
     }
     update_goldenmem(atomicAddr, &ret, atomicMask, 8);
   }
 
   if (atomicMask == 0xf || atomicMask == 0xf0) {
-    uint32_t rs = (uint32_t)atomicData; // rs2
-    uint32_t t = (uint32_t)atomicOut;   // original value
+    uint32_t rs = (uint32_t)atomicData[0]; // rs2
+    uint32_t t = (uint32_t)atomicOut[0];   // original value
+    uint32_t cmp = (uint32_t)atomicCmp[0]; // rd, data to be compared
     uint32_t ret;
     uint32_t mem;
     uint64_t mem_raw;
@@ -1039,8 +1121,8 @@ inline int handle_atomic(int coreid, uint64_t atomicAddr, uint64_t atomicData, u
       mem = (uint32_t)(mem_raw >> 32);
 
     if (mem != t && atomicFuop != 006 && atomicFuop != 002) { // ignore sc_w & lr_w
-      printf("Core %d atomic instr mismatch goldenMem, rawmem: 0x%lx mem: 0x%x, t: 0x%x, op: 0x%x, addr: 0x%lx\n",
-             coreid, mem_raw, mem, t, atomicFuop, atomicAddr);
+      Info("Core %d atomic instr mismatch goldenMem, rawmem: 0x%lx mem: 0x%x, t: 0x%x, op: 0x%x, addr: 0x%lx\n", coreid,
+           mem_raw, mem, t, atomicFuop, atomicAddr);
       return 1;
     }
     switch (atomicFuop) {
@@ -1071,12 +1153,38 @@ inline int handle_atomic(int coreid, uint64_t atomicAddr, uint64_t atomicData, u
       case 047: ret = (t < rs) ? t : rs; break;
       case 052:
       case 053: ret = (t > rs) ? t : rs; break;
-      default: printf("Unknown atomic fuOpType: 0x%x\n", atomicFuop);
+      case 054:
+      case 056:
+      case 057: ret = (t == cmp) ? rs : t; break;
+      default: Info("Unknown atomic fuOpType: 0x%x\n", atomicFuop);
     }
     ret_sel = ret;
     if (atomicMask == 0xf0)
       ret_sel = (ret_sel << 32);
     update_goldenmem(atomicAddr, &ret_sel, atomicMask, 8);
+  }
+
+  if (atomicMask == 0xffff) {
+    uint64_t meml, memh;
+    uint64_t retl, reth;
+    read_goldenmem(atomicAddr, &meml, 8);
+    read_goldenmem(atomicAddr + 8, &memh, 8);
+    if (meml != atomicOut[0] || memh != atomicOut[1]) {
+      Info("Core %d atomic instr mismatch goldenMem, mem: 0x%lx 0x%lx, t: 0x%lx 0x%lx, op: 0x%x, addr: 0x%lx\n", coreid,
+           memh, meml, atomicOut[1], atomicOut[0], atomicFuop, atomicAddr);
+      return 1;
+    }
+    switch (atomicFuop) {
+      case 054: {
+        bool success = atomicOut[0] == atomicCmp[0] && atomicOut[1] == atomicCmp[1];
+        retl = success ? atomicData[0] : atomicOut[0];
+        reth = success ? atomicData[1] : atomicOut[1];
+        break;
+      }
+      default: Info("Unknown atomic fuOpType: 0x%x\n", atomicFuop);
+    }
+    update_goldenmem(atomicAddr, &retl, 0xff, 8);
+    update_goldenmem(atomicAddr + 8, &reth, 0xff, 8);
   }
   return 0;
 }
@@ -1087,12 +1195,12 @@ void dumpGoldenMem(const char *banner, uint64_t addr, uint64_t time) {
   if (addr == 0) {
     return;
   }
-  printf("============== %s =============== time = %ld\ndata: ", banner, time);
+  Info("============== %s =============== time = %ld\ndata: ", banner, time);
   for (int i = 0; i < 8; i++) {
     read_goldenmem(addr + i * 8, &buf, 8);
-    printf("%016lx", *((uint64_t *)buf));
+    Info("%016lx", *((uint64_t *)buf));
   }
-  printf("\n");
+  Info("\n");
 #endif
 }
 
@@ -1121,8 +1229,8 @@ int Difftest::do_golden_memory_update() {
 #ifdef CONFIG_DIFFTEST_ATOMICEVENT
   if (dut->atomic.valid) {
     dut->atomic.valid = 0;
-    int ret =
-        handle_atomic(id, dut->atomic.addr, dut->atomic.data, dut->atomic.mask, dut->atomic.fuop, dut->atomic.out);
+    int ret = handle_atomic(id, dut->atomic.addr, (uint64_t *)dut->atomic.data, dut->atomic.mask,
+                            (uint64_t *)dut->atomic.cmp, dut->atomic.fuop, (uint64_t *)dut->atomic.out);
     if (dut->atomic.addr == track_instr) {
       dumpGoldenMem("Atmoic", track_instr, cycleCnt);
     }
@@ -1159,14 +1267,14 @@ void Difftest::load_event_record() {
 #endif // CONFIG_DIFFTEST_LOADEVENT
 #endif // CONFIG_DIFFTEST_SQUASH
 
-#ifdef CONFIG_DIFFTEST_REFILLEVENT
+#ifdef CONFIG_DIFFTEST_CMOINVALEVENT
 void Difftest::cmo_inval_event_record() {
   if (dut->cmo_inval.valid) {
     cmo_inval_event_set.insert(dut->cmo_inval.addr);
     dut->cmo_inval.valid = 0;
   }
 }
-#endif
+#endif // CONFIG_DIFFTEST_CMOINVALEVENT
 
 int Difftest::check_timeout() {
   uint64_t cycleCnt = get_trap_event()->cycleCnt;
@@ -1277,6 +1385,8 @@ void Difftest::do_non_reg_interrupt_pending() {
     ip.platformIRPStip = dut->non_reg_interrupt_pending.platformIRPStip;
     ip.platformIRPVseip = dut->non_reg_interrupt_pending.platformIRPVseip;
     ip.platformIRPVstip = dut->non_reg_interrupt_pending.platformIRPVstip;
+    ip.fromAIAMeip = dut->non_reg_interrupt_pending.fromAIAMeip;
+    ip.fromAIASeip = dut->non_reg_interrupt_pending.fromAIASeip;
     ip.localCounterOverflowInterruptReq = dut->non_reg_interrupt_pending.localCounterOverflowInterruptReq;
 
     proxy->non_reg_interrupt_pending(ip);
@@ -1285,24 +1395,74 @@ void Difftest::do_non_reg_interrupt_pending() {
 }
 #endif
 
+#ifdef CONFIG_DIFFTEST_MHPMEVENTOVERFLOWEVENT
+void Difftest::do_mhpmevent_overflow() {
+  if (dut->mhpmevent_overflow.valid) {
+    proxy->mhpmevent_overflow(dut->mhpmevent_overflow.mhpmeventOverflow);
+    dut->mhpmevent_overflow.valid = 0;
+  }
+}
+#endif
+
+#ifdef CONFIG_DIFFTEST_CRITICALERROREVENT
+void Difftest::do_raise_critical_error() {
+  if (dut->critical_error.valid) {
+    bool ref_critical_error = proxy->raise_critical_error();
+    if (ref_critical_error == dut->critical_error.criticalError) {
+      Info("Core %d dump: " ANSI_COLOR_RED
+           "HIT CRITICAL ERROR: please check if software cause a double trap. \n" ANSI_COLOR_RESET,
+           this->id);
+      raise_trap(STATE_GOODTRAP);
+    } else {
+      display();
+      Info("Core %d dump: DUT critical_error diff REF \n", this->id);
+      raise_trap(STATE_ABORT);
+    }
+  }
+}
+#endif
+
+#ifdef CONFIG_DIFFTEST_SYNCAIAEVENT
+void Difftest::do_sync_aia() {
+  if (dut->sync_aia.valid) {
+    struct FromAIA aia;
+    aia.mtopei = dut->sync_aia.mtopei;
+    aia.stopei = dut->sync_aia.stopei;
+    aia.vstopei = dut->sync_aia.vstopei;
+    aia.hgeip = dut->sync_aia.hgeip;
+    proxy->sync_aia(aia);
+    dut->sync_aia.valid = 0;
+  }
+}
+#endif
+
+#ifdef CONFIG_DIFFTEST_SYNCCUSTOMMFLUSHPWREVENT
+void Difftest::do_sync_custom_mflushpwr() {
+  if (dut->sync_custom_mflushpwr.valid) {
+    proxy->sync_custom_mflushpwr(dut->sync_custom_mflushpwr.l2FlushDone);
+    dut->sync_custom_mflushpwr.valid = 0;
+  }
+}
+#endif
+
 void Difftest::display() {
-  printf("\n==============  In the last commit group  ==============\n");
-  printf("the first commit instr pc of DUT is 0x%016lx\nthe first commit instr pc of REF is 0x%016lx\n",
-         dut_commit_first_pc, ref_commit_first_pc);
+  Info("\n==============  In the last commit group  ==============\n");
+  Info("the first commit instr pc of DUT is 0x%016lx\nthe first commit instr pc of REF is 0x%016lx\n",
+       dut_commit_first_pc, ref_commit_first_pc);
 
   state->display(this->id);
 
-  printf("\n==============  REF Regs  ==============\n");
+  Info("\n==============  REF Regs  ==============\n");
   fflush(stdout);
   proxy->ref_reg_display();
-  printf("privilegeMode: %lu\n", dut->csr.privilegeMode);
+  Info("privilegeMode: %lu\n", dut->csr.privilegeMode);
 }
 
 void CommitTrace::display(bool use_spike) {
-  printf("%s pc %016lx inst %08x", get_type(), pc, inst);
+  Info("%s pc %016lx inst %08x", get_type(), pc, inst);
   display_custom();
   if (use_spike) {
-    printf(" %s", spike_dasm(inst));
+    Info(" %s", spike_dasm(inst));
   }
 }
 
@@ -1311,14 +1471,14 @@ void Difftest::display_stats() {
   uint64_t instrCnt = trap->instrCnt;
   uint64_t cycleCnt = trap->cycleCnt;
   double ipc = (double)instrCnt / cycleCnt;
-  eprintf(ANSI_COLOR_MAGENTA "Core-%d instrCnt = %'" PRIu64 ", cycleCnt = %'" PRIu64 ", IPC = %lf\n" ANSI_COLOR_RESET,
-          this->id, instrCnt, cycleCnt, ipc);
+  Info(ANSI_COLOR_MAGENTA "Core-%d instrCnt = %'" PRIu64 ", cycleCnt = %'" PRIu64 ", IPC = %lf\n" ANSI_COLOR_RESET,
+       this->id, instrCnt, cycleCnt, ipc);
 }
 
 void DiffState::display_commit_count(int i) {
   auto retire_pointer = (retire_group_pointer + DEBUG_GROUP_TRACE_SIZE - 1) % DEBUG_GROUP_TRACE_SIZE;
-  printf("commit group [%02d]: pc %010lx cmtcnt %d%s\n", i, retire_group_pc_queue[i], retire_group_cnt_queue[i],
-         (i == retire_pointer) ? " <--" : "");
+  Info("commit group [%02d]: pc %010lx cmtcnt %d%s\n", i, retire_group_pc_queue[i], retire_group_cnt_queue[i],
+       (i == retire_pointer) ? " <--" : "");
 }
 
 void DiffState::display_commit_instr(int i) {
@@ -1330,19 +1490,19 @@ void DiffState::display_commit_instr(int i, bool use_spike) {
   if (!commit_trace[i]) {
     return;
   }
-  printf("[%02d] ", i);
+  Info("[%02d] ", i);
   commit_trace[i]->display(use_spike);
   auto retire_pointer = (retire_inst_pointer + DEBUG_INST_TRACE_SIZE - 1) % DEBUG_INST_TRACE_SIZE;
-  printf("%s\n", (i == retire_pointer) ? " <--" : "");
+  Info("%s\n", (i == retire_pointer) ? " <--" : "");
 }
 
 void DiffState::display(int coreid) {
-  printf("\n============== Commit Group Trace (Core %d) ==============\n", coreid);
+  Info("\n============== Commit Group Trace (Core %d) ==============\n", coreid);
   for (int j = 0; j < DEBUG_GROUP_TRACE_SIZE; j++) {
     display_commit_count(j);
   }
 
-  printf("\n============== Commit Instr Trace ==============\n");
+  Info("\n============== Commit Instr Trace ==============\n");
   bool use_spike = spike_valid();
   for (int j = 0; j < DEBUG_INST_TRACE_SIZE; j++) {
     display_commit_instr(j, use_spike);

@@ -17,17 +17,14 @@
 package difftest
 
 import chisel3._
-import chisel3.util._
 import chisel3.reflect.DataMirror
-import difftest.common.DifftestWiring
+import chisel3.util._
+import difftest.common.{DifftestWiring, FileControl}
 import difftest.gateway.{Gateway, GatewayConfig}
+import difftest.util.Profile
 
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths, StandardOpenOption}
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
-import org.json4s.DefaultFormats
-import org.json4s.native.Serialization.writePretty
 
 trait DifftestWithCoreid {
   val coreid = UInt(8.W)
@@ -80,23 +77,31 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
   protected val needFlatten: Boolean = false
   def isFlatten: Boolean = hasAddress && this.needFlatten
 
-  // Elements without clock, coreid, and index.
-  def diffElements: Seq[(String, Seq[UInt])] = {
-    val filteredElements = Seq("clock", "coreid", "index")
-    val raw = elements.toSeq.reverse.filterNot(e => filteredElements.contains(e._1))
-    raw.map { case (s, data) =>
+  // Convert elements into flatten UInt/Vec[UInt]
+  private def seqUIntHelper(in: Seq[(String, Data)]): Seq[(String, Seq[UInt])] = {
+    in.flatMap { case (s, data) =>
       data match {
-        case v: Vec[_] => (s, Some(v.asInstanceOf[Vec[UInt]]))
-        case u: UInt   => (s, Some(Seq(u)))
-        case _ =>
-          println(s"Unknown type: ($s, $data)")
-          (s, None)
+        case v: Vec[_] =>
+          v.foreach(e => require(e.isInstanceOf[UInt], s"Vec of $e is not supported yet"))
+          Some((s, v.asInstanceOf[Vec[UInt]]))
+        case u: UInt   => Some((s, Seq(u)))
+        case b: Bundle => seqUIntHelper(b.elements.toSeq.reverse).map(x => (s"${s}_${x._1}", x._2))
+        case _         => throw new Exception(s"Unsupported data type: ($s, $data)")
       }
-    }.map(x => (x._1, x._2.get))
+    }
   }
-  // Sizes of the DiffTest elements.
-  private def diffSizes(round: Int): Seq[Seq[Int]] = {
-    diffElements.map(_._2.map(u => (u.getWidth + round - 1) / round))
+
+  def elementsInSeqUInt: Seq[(String, Seq[UInt])] = seqUIntHelper(elements.toSeq.reverse)
+
+  // return (name, data_width_in_byte, data_seq) for all elements except coreid and index
+  def dataElements: Seq[(String, Int, Seq[UInt])] = {
+    val nonDataElements = Seq("coreid", "index")
+    elementsInSeqUInt.filterNot(e => nonDataElements.contains(e._1)).map { case (name, dataSeq) =>
+      val width = dataSeq.map(_.getWidth).distinct
+      require(width.length == 1, "should not have different width")
+      require(width.head <= 64, s"do not support DifftestBundle element with width (${width.head}) >= 64")
+      (name, (width.head + 7) / 8, dataSeq)
+    }
   }
 
   def toCppDeclMacro: String = {
@@ -107,10 +112,10 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
     val cpp = ListBuffer.empty[String]
     val attribute = if (packed) "__attribute__((packed))" else ""
     cpp += s"typedef struct $attribute {"
-    for (((name, elem), size) <- diffElements.zip(diffSizes(8))) {
+    for ((name, size, elem) <- dataElements) {
       val isRemoved = isFlatten && Seq("valid", "address").contains(name)
       if (!isRemoved) {
-        val arrayType = s"uint${size.head * 8}_t"
+        val arrayType = s"uint${size * 8}_t"
         val arrayWidth = if (elem.length == 1) "" else s"[${elem.length}]"
         cpp += f"  $arrayType%-8s $name$arrayWidth;"
       }
@@ -134,7 +139,8 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
     cpp.mkString("\n")
   }
 
-  def toJsonProfile: Map[String, Any] = Map("className" -> this.getClass.getName)
+  // TODO: this should be implemented using reflection.
+  def classArgs: Map[String, Any] = Map()
 
   // returns a Seq indicating the udpate dependencies. Default: empty
   // Only when one of the dependencies is valid, this bundle is updated.
@@ -243,7 +249,7 @@ class DiffInstrCommit(nPhyRegs: Int = 32) extends InstrCommit(nPhyRegs) with Dif
     squashed
   }
 
-  override def toJsonProfile: Map[String, Any] = super.toJsonProfile ++ Map("nPhyRegs" -> nPhyRegs)
+  override def classArgs: Map[String, Any] = Map("nPhyRegs" -> nPhyRegs)
 }
 
 class DiffCommitData extends CommitData with DifftestBundle with DifftestWithIndex {
@@ -296,7 +302,7 @@ class DiffIntWriteback(numRegs: Int = 32) extends DataWriteback(numRegs) with Di
   override protected val needFlatten: Boolean = true
   // It is required for MMIO/Load(only for multi-core) data synchronization, and commit instr trace record
   override def supportsSquashBase: Bool = true.B
-  override def toJsonProfile: Map[String, Any] = super.toJsonProfile ++ Map("numRegs" -> numRegs)
+  override def classArgs: Map[String, Any] = Map("numRegs" -> numRegs)
 }
 
 class DiffFpWriteback(numRegs: Int = 32) extends DiffIntWriteback(numRegs) {
@@ -310,13 +316,14 @@ class DiffVecWriteback(numRegs: Int = 32) extends DiffIntWriteback(numRegs) {
 class DiffArchIntRegState extends ArchIntRegState with DifftestBundle {
   override val desiredCppName: String = "regs_int"
   override val desiredOffset: Int = 0
+  override val updateDependency: Seq[String] = Seq("commit", "event")
 }
 
 abstract class DiffArchDelayedUpdate(numRegs: Int)
   extends ArchDelayedUpdate(numRegs)
   with DifftestBundle
   with DifftestWithIndex {
-  override def toJsonProfile: Map[String, Any] = super.toJsonProfile ++ Map("numRegs" -> numRegs)
+  override def classArgs: Map[String, Any] = Map("numRegs" -> numRegs)
 }
 
 class DiffArchIntDelayedUpdate extends DiffArchDelayedUpdate(32) {
@@ -330,11 +337,13 @@ class DiffArchFpDelayedUpdate extends DiffArchDelayedUpdate(32) {
 class DiffArchFpRegState extends ArchIntRegState with DifftestBundle {
   override val desiredCppName: String = "regs_fp"
   override val desiredOffset: Int = 2
+  override val updateDependency: Seq[String] = Seq("commit", "event")
 }
 
 class DiffArchVecRegState extends ArchVecRegState with DifftestBundle {
   override val desiredCppName: String = "regs_vec"
   override val desiredOffset: Int = 4
+  override val updateDependency: Seq[String] = Seq("commit", "event")
 }
 
 class DiffVecCSRState extends VecCSRState with DifftestBundle {
@@ -426,7 +435,22 @@ class DiffRunaheadRedirectEvent extends RunaheadRedirectEvent with DifftestBundl
 
 class DiffNonRegInterruptPendingEvent extends NonRegInterruptPendingEvent with DifftestBundle {
   override val desiredCppName: String = "non_reg_interrupt_pending"
+}
 
+class DiffMhpmeventOverflowEvent extends MhpmeventOverflowEvent with DifftestBundle {
+  override val desiredCppName: String = "mhpmevent_overflow"
+}
+
+class DiffCriticalErrorEvent extends CriticalErrorEvent with DifftestBundle {
+  override val desiredCppName: String = "critical_error"
+}
+
+class DiffSyncAIAEvent extends AIAEvent with DifftestBundle {
+  override val desiredCppName: String = "sync_aia"
+}
+
+class DiffSyncCustomMflushpwrEvent extends SyncCustomMflushpwrEvent with DifftestBundle {
+  override val desiredCppName: String = "sync_custom_mflushpwr"
 }
 
 class DiffTraceInfo(config: GatewayConfig) extends TraceInfo with DifftestBundle {
@@ -457,10 +481,7 @@ trait DifftestModule[T <: DifftestBundle] {
 
 object DifftestModule {
   private val enabled = true
-  private val instances = ListBuffer.empty[DifftestBundle]
-  private val cppMacros = ListBuffer.empty[String]
-  private val vMacros = ListBuffer.empty[String]
-  private val jsonProfiles = ListBuffer.empty[Map[String, Any]]
+  private val interfaces = ListBuffer.empty[(DifftestBundle, Int)]
 
   def parseArgs(args: Array[String]): Array[String] = {
     @tailrec
@@ -470,7 +491,7 @@ object DifftestModule {
         case "--difftest-config" :: config :: tail =>
           Gateway.setConfig(config)
           nextOption(args.patch(args.indexOf("--difftest-config"), Nil, 2), tail)
-        case option :: tail => nextOption(args, tail)
+        case _ :: tail => nextOption(args, tail)
       }
     }
     nextOption(args, args.toList)
@@ -489,19 +510,18 @@ object DifftestModule {
       difftest := DontCare
       difftest.bits.getValidOption.foreach(_ := false.B)
     }
-    jsonProfiles += (gen.toJsonProfile ++ Map("delay" -> delay))
+    interfaces.append((gen, delay))
     difftest
   }
 
+  def get_current_interfaces(): Seq[(DifftestBundle, Int)] = interfaces.toSeq
+
   def finish(cpu: String, createTopIO: Boolean): Option[DifftestTopIO] = {
     val gateway = Gateway.collect()
-    cppMacros ++= gateway.cppMacros
-    vMacros ++= gateway.vMacros
-    instances ++= gateway.instances
 
-    generateCppHeader(cpu, gateway.structPacked.getOrElse(false))
-    generateVeriogHeader()
-    generateJsonProfile(cpu)
+    generateCppHeader(cpu, gateway.instances, gateway.cppMacros, gateway.structPacked.getOrElse(false))
+    generateVeriogHeader(gateway.vMacros)
+    Profile.generateJson(cpu, interfaces.toSeq)
 
     Option.when(createTopIO) {
       if (enabled) {
@@ -536,7 +556,59 @@ object DifftestModule {
     difftest
   }
 
-  def generateCppHeader(cpu: String, structPacked: Boolean): Unit = {
+  def generateSvhInterface(instances: Seq[DifftestBundle], numCores: Int): Unit = {
+    // generate interface by jsonProfile, single-core interface will be copied numCore times
+    val difftestSvh = ListBuffer.empty[String]
+    val core_if_len = instances.length / numCores
+    val gateway_args = instances.zipWithIndex.map { case (b, idx) =>
+      val typeString = s"logic [${b.getWidth - 1}: 0]"
+      val argName = s"gateway_$idx"
+      (typeString, argName)
+    }
+    val core_args = gateway_args.take(core_if_len)
+    def getInterface(args: Seq[(String, String)]): String = {
+      args.map { case (t, name) => s"$t $name;" }.mkString("\n")
+    }
+    def getModPort(args: Seq[(String, String)]): String = {
+      args.map(_._2).mkString(", ")
+    }
+    val if_assigns = Seq
+      .tabulate(numCores) { coreid =>
+        val offset = coreid * core_if_len
+        Seq.tabulate(core_if_len) { idx =>
+          s"assign gateway_out.gateway_${offset + idx} = core_in[$coreid].gateway_$idx;"
+        }
+      }
+      .flatten
+      .mkString("\n")
+    difftestSvh +=
+      s"""|interface core_if;
+          |${getInterface(core_args)}
+          |modport in (input ${getModPort(core_args)});
+          |modport out (output ${getModPort(core_args)});
+          |endinterface
+          |
+          |interface gateway_if;
+          |${getInterface(gateway_args)}
+          |modport in (input ${getModPort(gateway_args)});
+          |modport out (output ${getModPort(gateway_args)});
+          |endinterface
+          |
+          |module CoreToGateway (
+          |  gateway_if.out gateway_out,
+          |  core_if.in core_in[$numCores]
+          |);
+          |$if_assigns
+          |endmodule""".stripMargin
+    FileControl.write(difftestSvh, "gateway_interface.svh")
+  }
+
+  def generateCppHeader(
+    cpu: String,
+    instances: Seq[DifftestBundle],
+    macros: Seq[String],
+    structPacked: Boolean,
+  ): Unit = {
     val difftestCpp = ListBuffer.empty[String]
     difftestCpp += "#ifndef __DIFFSTATE_H__"
     difftestCpp += "#define __DIFFSTATE_H__"
@@ -544,7 +616,7 @@ object DifftestModule {
     difftestCpp += "#include <cstdint>"
     difftestCpp += ""
 
-    cppMacros.foreach(m => difftestCpp += s"#define $m")
+    macros.foreach(m => difftestCpp += s"#define $m")
     difftestCpp += ""
 
     val cpu_s = cpu.replace("-", "_").replace(" ", "").toUpperCase
@@ -553,8 +625,12 @@ object DifftestModule {
 
     val numCores = instances.count(_.isUniqueIdentifier)
     if (instances.nonEmpty) {
-      difftestCpp += s"#define NUM_CORES $numCores"
-      difftestCpp += ""
+      difftestCpp +=
+        s"""
+           |#ifndef NUM_CORES
+           |#define NUM_CORES $numCores
+           |#endif
+           |""".stripMargin
     }
 
     val uniqBundles = instances.groupBy(_.desiredModuleName)
@@ -566,7 +642,7 @@ object DifftestModule {
         val macroName = bundleType.desiredCppName.toUpperCase
         if (bundleType.isInstanceOf[DifftestWithIndex]) {
           val configWidthName = s"CONFIG_DIFF_${macroName}_WIDTH"
-          require(bundles.length % numCores == 0, s"Cores seem to have different # of ${macroName}")
+          require(bundles.length % numCores == 0, s"Cores seem to have different # of $macroName")
           difftestCpp += s"#define $configWidthName ${bundles.length / numCores}"
         }
         if (bundleType.isFlatten) {
@@ -585,8 +661,8 @@ object DifftestModule {
       val cppIsArray = bundleType.isInstanceOf[DifftestWithIndex] || bundleType.isFlatten
       val nInstances = cppInstances.length
       val instanceCount = if (bundleType.isFlatten) bundleType.bits.getNumElements else nInstances / numCores
-      require(nInstances % numCores == 0, s"Cores seem to have different # of ${instanceName}")
-      require(cppIsArray || nInstances == numCores, s"# of ${instanceName} should not be ${nInstances}")
+      require(nInstances % numCores == 0, s"Cores seem to have different # of $instanceName")
+      require(cppIsArray || nInstances == numCores, s"# of $instanceName should not be $nInstances")
       val arrayWidth = if (cppIsArray) s"[$instanceCount]" else ""
       difftestCpp += f"  $className%-30s $instanceName$arrayWidth;"
     }
@@ -615,38 +691,21 @@ object DifftestModule {
          |void diffstate_perfcnt_finish(long long msec);
          |#endif // CONFIG_DIFFTEST_PERFCNT
          |""".stripMargin
+    difftestCpp +=
+      s"""
+         |#ifdef CONFIG_DIFFTEST_QUERY
+         |void difftest_query_init();
+         |void difftest_query_step();
+         |void difftest_query_finish();
+         |#endif // CONFIG_DIFFTEST_QUERY
+         |""".stripMargin
     difftestCpp += "#endif // __DIFFSTATE_H__"
     difftestCpp += ""
-    streamToFile(difftestCpp, "diffstate.h")
+    FileControl.write(difftestCpp, "diffstate.h")
   }
 
-  def generateVeriogHeader(): Unit = {
-    val difftestVeriog = ListBuffer.empty[String]
-    vMacros.foreach(m => difftestVeriog += s"`define $m")
-    streamToFile(difftestVeriog, "DifftestMacros.v")
-  }
-
-  def generateJsonProfile(cpu: String): Unit = {
-    val difftestJson = ListBuffer.empty[String]
-    val profile = jsonProfiles ++ Map("cpu" -> cpu)
-    difftestJson += writePretty(profile)(DefaultFormats)
-    streamToFile(difftestJson, "difftest_profile.json")
-  }
-
-  def streamToFile(fileStream: ListBuffer[String], fileName: String, append: Boolean = false) {
-    val outputDir = sys.env("NOOP_HOME") + "/build/generated-src/"
-    Files.createDirectories(Paths.get(outputDir))
-    val outputFile = outputDir + fileName
-    val options = if (append) {
-      Seq(StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-    } else {
-      Seq(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-    }
-    Files.write(
-      Paths.get(outputFile),
-      (fileStream.mkString("\n") + "\n").getBytes(StandardCharsets.UTF_8),
-      options: _*
-    )
+  def generateVeriogHeader(macros: Seq[String]): Unit = {
+    FileControl.write(macros.map(m => s"`define $m"), "DifftestMacros.v")
   }
 }
 

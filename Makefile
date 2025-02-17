@@ -78,6 +78,13 @@ SIM_VSRC = $(shell find $(VSRC_DIR) -name "*.v" -or -name "*.sv")
 
 # DiffTest support
 DIFFTEST_CSRC_DIR = $(abspath ./src/test/csrc/difftest)
+# FPGA-Difftest support
+ifeq ($(FPGA),1)
+$(info FPGA is enabled. ChiselDB and ConstantIn are implicitly disabled.)
+WITH_CHISELDB = 0
+WITH_CONSTANTIN = 0
+endif
+
 DIFFTEST_CXXFILES = $(shell find $(DIFFTEST_CSRC_DIR) -name "*.cpp")
 ifeq ($(NO_DIFF), 1)
 SIM_CXXFLAGS += -DCONFIG_NO_DIFFTEST
@@ -86,6 +93,10 @@ SIM_CXXFILES += $(DIFFTEST_CXXFILES)
 SIM_CXXFLAGS += -I$(DIFFTEST_CSRC_DIR)
 ifeq ($(DIFFTEST_PERFCNT), 1)
 SIM_CXXFLAGS += -DCONFIG_DIFFTEST_PERFCNT
+endif
+ifeq ($(DIFFTEST_QUERY), 1)
+SIM_CXXFLAGS += -DCONFIG_DIFFTEST_QUERY
+SIM_LDFLAGS  += -lsqlite3
 endif
 endif
 
@@ -109,6 +120,7 @@ SIM_CXXFLAGS += -I$(BUILD_DIR) -DENABLE_IPC
 endif
 
 # REF SELECTION
+REF ?= Nemu
 ifneq ($(REF),)
 ifneq ($(wildcard $(REF)),)
 SIM_CXXFLAGS += -DREF_PROXY=LinkedProxy -DLINKED_REFPROXY_LIB=\\\"$(REF)\\\"
@@ -164,6 +176,12 @@ ifneq ($(NO_ZSTD_COMPRESSION),)
 SIM_CXXFLAGS += -DNO_ZSTD_COMPRESSION
 else
 SIM_LDFLAGS  += -lzstd
+endif
+
+# Elf image support
+IMAGE_ELF ?= 1
+ifeq ($(IMAGE_ELF),0)
+SIM_CXXFLAGS += -DNO_IMAGE_ELF
 endif
 
 # spike-dasm plugin
@@ -225,8 +243,9 @@ include verilator.mk
 include vcs.mk
 include palladium.mk
 include libso.mk
+include fpga.mk
 
-clean: vcs-clean pldm-clean
+clean: vcs-clean pldm-clean fpga-clean
 	rm -rf $(BUILD_DIR)
 
 format: scala-format clang-format

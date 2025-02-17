@@ -129,8 +129,7 @@ public:
   f(update_config, update_dynamic_config, void, void*)                        \
   f(uarchstatus_sync, difftest_uarchstatus_sync, void, void*)                 \
   f(store_commit, difftest_store_commit, int, uint64_t*, uint64_t*, uint8_t*) \
-  f(raise_intr, difftest_raise_intr, void, uint64_t)                          \
-  f(load_flash_bin, difftest_load_flash, void, void*, size_t)
+  f(raise_intr, difftest_raise_intr, void, uint64_t)
 
 #ifdef ENABLE_RUNHEAD
 #define REF_RUN_AHEAD(f)                                                      \
@@ -161,6 +160,8 @@ public:
   REF_DEBUG_MODE(f)
 
 #define REF_OPTIONAL(f)                                                                                     \
+  f(load_flash_bin, difftest_load_flash, void, const char*, size_t)                                         \
+  f(load_flash_bin_v2, difftest_load_flash_v2, void, const uint8_t*, size_t)                                \
   f(ref_status, difftest_status, int, )                                                                     \
   f(ref_close, difftest_close, void, )                                                                      \
   f(ref_set_ramsize, difftest_set_ramsize, void, size_t)                                                    \
@@ -171,9 +172,13 @@ public:
   f(ref_memcpy_init, difftest_memcpy_init, void, uint64_t, void*, size_t, bool)                             \
   f(raise_nmi_intr, difftest_raise_nmi_intr, void, bool)                                                    \
   f(ref_virtual_interrupt_is_hvictl_inject, difftest_virtual_interrupt_is_hvictl_inject, void, bool)        \
-  f(disambiguation_state, difftest_disambiguation_state, int, )               \
-  f(ref_non_reg_interrupt_pending, difftest_non_reg_interrupt_pending, void, void*)
-
+  f(disambiguation_state, difftest_disambiguation_state, int, )                                             \
+  f(ref_non_reg_interrupt_pending, difftest_non_reg_interrupt_pending, void, void*)                         \
+  f(raise_mhpmevent_overflow, difftest_raise_mhpmevent_overflow, void, uint64_t)                            \
+  f(ref_raise_critical_error, difftest_raise_critical_error, bool)                                          \
+  f(ref_get_store_event_other_info, difftest_get_store_event_other_info, void, void*)                       \
+  f(ref_sync_aia, difftest_sync_aia, void, void*)                                                           \
+  f(ref_sync_custom_mflushpwr, difftest_sync_custom_mflushpwr, void, bool)
 #define RefFunc(func, ret, ...) ret func(__VA_ARGS__)
 #define DeclRefFunc(this_func, dummy, ret, ...) RefFunc((*this_func), ret, __VA_ARGS__);
 /* clang-format on */
@@ -246,16 +251,26 @@ public:
   int compare(DiffTestState *dut);
   void display(DiffTestState *dut = nullptr);
 
-  inline void skip_one(bool isRVC, bool wen, uint32_t wdest, uint64_t wdata) {
+  inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata) {
+    bool wen = rfwen | fpwen;
     if (ref_skip_one) {
       ref_skip_one(isRVC, wen, wdest, wdata);
     } else {
       sync();
       pc += isRVC ? 2 : 4;
-      // TODO: what if skip with fpwen?
-      if (wen) {
+
+      if (rfwen)
         regs_int.value[wdest] = wdata;
-      }
+#ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
+      if (fpwen)
+        regs_fp.value[wdest] = wdata;
+#endif // CONFIG_DIFFTEST_ARCHFPREGSTATE
+#ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
+      // TODO: vec skip is not supported at this time.
+      if (vecwen)
+        assert(0);
+#endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
+
       sync(true);
     }
   }
@@ -264,7 +279,7 @@ public:
     if (raise_nmi_intr) {
       raise_nmi_intr(hasNMI);
     } else {
-      printf("No NMI interrupt is triggered.\n");
+      Info("No NMI interrupt is triggered.\n");
     }
   }
 
@@ -272,13 +287,39 @@ public:
     if (ref_virtual_interrupt_is_hvictl_inject) {
       ref_virtual_interrupt_is_hvictl_inject(virtualInterruptIsHvictlInject);
     } else {
-      printf("Virtual interrupt without hvictl register injection.\n");
+      Info("Virtual interrupt without hvictl register injection.\n");
     }
   }
 
   inline void non_reg_interrupt_pending(struct NonRegInterruptPending &ip) {
     if (ref_non_reg_interrupt_pending) {
       ref_non_reg_interrupt_pending(&ip);
+    }
+  }
+
+  inline void mhpmevent_overflow(uint64_t mhpmeventOverflow) {
+    if (raise_mhpmevent_overflow) {
+      raise_mhpmevent_overflow(mhpmeventOverflow);
+    }
+  }
+
+  inline bool raise_critical_error() {
+    return ref_raise_critical_error ? ref_raise_critical_error() : false;
+  }
+
+  inline void sync_aia(struct FromAIA &src) {
+    if (ref_sync_aia) {
+      ref_sync_aia(&src);
+    } else {
+      Info("Does not support the out-of-core part of AIA.\n");
+    }
+  }
+
+  inline void sync_custom_mflushpwr(bool l2FlushDone) {
+    if (ref_sync_custom_mflushpwr) {
+      ref_sync_custom_mflushpwr(l2FlushDone);
+    } else {
+      printf("Does not support sync custom CSR mflushpwr.\n");
     }
   }
 
@@ -305,6 +346,18 @@ public:
       ref_memcpy_init(dest, src, n, direction);
     } else {
       ref_memcpy(dest, src, n, direction);
+    }
+  }
+
+  void flash_init(const uint8_t *flash_base, size_t size, const char *flash_bin);
+
+  inline void get_store_event_other_info(void *info) {
+    if (ref_get_store_event_other_info) {
+      ref_get_store_event_other_info(info);
+    } else {
+      Info(
+          "This version of 'REF' does not support the 'PC' value of store commit event. Please use a newer version of "
+          "'REF'.\n");
     }
   }
 
@@ -407,7 +460,16 @@ struct NonRegInterruptPending {
   bool platformIRPStip;
   bool platformIRPVseip;
   bool platformIRPVstip;
+  bool fromAIAMeip;
+  bool fromAIASeip;
   bool localCounterOverflowInterruptReq;
+};
+
+struct FromAIA {
+  uint64_t mtopei;
+  uint64_t stopei;
+  uint64_t vstopei;
+  uint64_t hgeip;
 };
 
 extern const char *difftest_ref_so;

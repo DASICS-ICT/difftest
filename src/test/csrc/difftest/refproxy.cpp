@@ -16,7 +16,10 @@
 
 #include "refproxy.h"
 #include <dlfcn.h>
+#include <fstream>
+#include <iostream>
 #include <unistd.h>
+#include <vector>
 
 uint8_t *ref_golden_mem = NULL;
 const char *difftest_ref_so = NULL;
@@ -226,7 +229,7 @@ void RefProxy::display(DiffTestState *dut) {
     uint64_t *_ptr_ref = (uint64_t *)(&(field));                          \
     for (int i = 0; i < sizeof(field) / sizeof(uint64_t); i++) {          \
       if (_ptr_dut[i] != _ptr_ref[i]) {                                   \
-        printf(                                                           \
+        Info(                                                             \
             "%7s different at pc = 0x%010lx, right= 0x%016lx, "           \
             "wrong = 0x%016lx\n",                                         \
             field_names[i], dut->commit[0].pc, _ptr_ref[i], _ptr_dut[i]); \
@@ -264,6 +267,18 @@ void RefProxy::display(DiffTestState *dut) {
     ref_reg_display();
   }
 };
+
+void RefProxy::flash_init(const uint8_t *flash_base, size_t size, const char *flash_bin) {
+  if (load_flash_bin_v2) {
+    load_flash_bin_v2(flash_base, size);
+  } else if (load_flash_bin) {
+    // This API is deprecated because flash_bin may be an empty pointer
+    load_flash_bin(flash_bin, size);
+  } else {
+    std::cout << "Require load_flash_bin or load_flash_bin_v2 to initialize the flash" << std::endl;
+    assert(0);
+  }
+}
 
 #ifdef CPU_ROCKET_CHIP
 // similar function as encodeVirtualAddress@RocketCore.scala: 1151

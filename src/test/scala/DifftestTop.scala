@@ -17,11 +17,9 @@
 package difftest
 
 import chisel3._
+import difftest.util.DifftestProfile
 
-import java.nio.file.{Files, Paths}
 import scala.annotation.tailrec
-import org.json4s.DefaultFormats
-import org.json4s.native.JsonMethods.parse
 
 // Main class to generate difftest modules when design is not written in chisel.
 class DifftestTop extends Module {
@@ -59,36 +57,32 @@ class DifftestTop extends Module {
   val difftest_runahead_commit_event = DifftestModule(new DiffRunaheadCommitEvent, dontCare = true)
   val difftest_runahead_redirect_event = DifftestModule(new DiffRunaheadRedirectEvent, dontCare = true)
   val difftest_non_reg_interrupt_pending_event = DifftestModule(new DiffNonRegInterruptPendingEvent, dontCare = true)
+  val difftest_mhpmevent_overflow_event = DifftestModule(new DiffMhpmeventOverflowEvent, dontCare = true)
+  val difftest_critical_error_event = DifftestModule(new DiffCriticalErrorEvent, dontCare = true)
+  val difftest_sync_aia_event = DifftestModule(new DiffSyncAIAEvent, dontCare = true)
+  val difftest_sync_custom_mflushpwr_event = DifftestModule(new DiffSyncCustomMflushpwrEvent, dontCare = true)
 
   DifftestModule.finish("demo")
 }
 
 // Generate simulation interface based on Profile describing the instantiated information of design
-class SimTop(profileName: String, numCores: Int) extends Module {
-  val profileStr = new String(Files.readAllBytes(Paths.get(profileName)))
-  val profiles = parse(profileStr).extract[List[Map[String, Any]]](DefaultFormats, manifest[List[Map[String, Any]]])
-  for (coreid <- 0 until numCores) {
-    profiles.filter(_.contains("className")).zipWithIndex.foreach { case (rawProf, idx) =>
-      val prof = rawProf.map { case (k, v) =>
-        v match {
-          case i: BigInt => (k, i.toInt) // convert BigInt to Int
-          case x         => (k, x)
-        }
-      }
-      val constructor = Class.forName(prof("className").toString).getConstructors()(0)
-      val args = constructor.getParameters().toSeq.map { param => prof(param.getName.toString) }
-      val inst = constructor.newInstance(args: _*).asInstanceOf[DifftestBundle]
-      DifftestModule(inst, true, prof("delay").asInstanceOf[Int]).suggestName(s"gateway_${coreid}_$idx")
+class SimTop(profileName: String, numCoresOption: Option[Int]) extends Module {
+  val profile = DifftestProfile.fromJson(profileName)
+  val numCores = numCoresOption.getOrElse(profile.numCores)
+  val bundles = (0 until numCores).flatMap(coreid =>
+    profile.bundles.zipWithIndex.map { case (p, i) =>
+      val io = DifftestModule(p.toBundle, true, p.delay).suggestName(s"gateway_${coreid}_$i")
+      dontTouch(io)
     }
-  }
-  val dutInfo = profiles.find(_.contains("cpu")).get
-  DifftestModule.finish(dutInfo("cpu").asInstanceOf[String])
+  )
+  DifftestModule.generateSvhInterface(bundles, numCores)
+  DifftestModule.finish(profile.cpu)
 }
 
 abstract class DifftestApp extends App {
   case class GenParams(
     profile: Option[String] = None,
-    numCores: Int = 1,
+    numCores: Option[Int] = None,
   )
   def parseArgs(args: Array[String]): (GenParams, Array[String]) = {
     val default = new GenParams()
@@ -98,7 +92,7 @@ abstract class DifftestApp extends App {
       list match {
         case Nil                            => param
         case "--profile" :: str :: tail     => nextOption(param.copy(profile = Some(str)), tail)
-        case "--num-cores" :: value :: tail => nextOption(param.copy(numCores = value.toInt), tail)
+        case "--num-cores" :: value :: tail => nextOption(param.copy(numCores = Some(value.toInt)), tail)
         case option :: tail =>
           firrtlOpts :+= option
           nextOption(param, tail)
