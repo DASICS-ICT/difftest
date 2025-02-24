@@ -93,17 +93,17 @@ VCS_FLAGS += -CFLAGS "$(VCS_CXXFLAGS)" -LDFLAGS "$(VCS_LDFLAGS)" -j200
 VCS_FLAGS += $(EXTRA)
 
 #ROT include file
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_crypto_prince_ref_0.1
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_secded_enc_0
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_util_get_scramble_params_0/rtl
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_util_memload_0/rtl
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_scramble_model_0
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_verilator_memutil_dpi_0/cpp
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_assert_0.1/rtl
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_verilator_memutil_dpi_scrambled_0/cpp
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_ip_sm3_1.0/rtl
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/zgc_ip_puf_1.0/rtl
-ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_macros_0.1/rtl/
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_crypto_prince_ref_0.1
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_secded_enc_0
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_util_get_scramble_params_0/rtl
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_util_memload_0/rtl
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_scramble_model_0
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_verilator_memutil_dpi_0/cpp
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_assert_0.1/rtl
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_dv_verilator_memutil_dpi_scrambled_0/cpp
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_ip_sm3_1.0/rtl
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/zgc_ip_puf_1.0/rtl
+# ROT_include += +incdir+$(NOOP_HOME)/src/main/resources/TLROT/src/lowrisc_prim_macros_0.1/rtl/
 
 SIM_FLIST := $(shell pwd)/sim_flist.f
 $(VCS_TARGET): $(SIM_TOP_V) $(VCS_CXXFILES) $(VCS_VFILES) $(CFG_HEADERS)

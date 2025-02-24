@@ -237,8 +237,8 @@ VERILATOR_FLAGS =                   \
   -CFLAGS "$(EMU_CXXFLAGS)"         \
   -LDFLAGS "$(EMU_LDFLAGS)"         \
   -o $(abspath $(EMU_FINAL_TARGET))              \
-  $(VEXTRA_FLAGS)	\
-  -f $(NOOP_HOME)/src/main/resources/TLROT/lowrisc_dv_rot_top_verilator_sim_0.1.vc 
+  $(VEXTRA_FLAGS)	
+  # -f $(NOOP_HOME)/src/main/resources/TLROT/lowrisc_dv_rot_top_verilator_sim_0.1.vc 
   
 
 EMU_DEPS  := $(SIM_VSRC) $(EMU_CXXFILES)
