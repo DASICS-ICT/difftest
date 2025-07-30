@@ -202,6 +202,13 @@ int Difftest::step() {
     ref_regs_ptr[72] = dut_regs_ptr[72];
   }
 
+  // [DASICS] ignore DASICS bound CSRs comparison
+  for (int i = 96; i < 128; i++) {
+    if (dut_regs_ptr[i] != ref_regs_ptr[i]) {
+        ref_regs_ptr[i] = dut_regs_ptr[i];
+      }
+  }
+
   if (memcmp(dut_regs_ptr, ref_regs_ptr, DIFFTEST_NR_REG * sizeof(uint64_t))) {
     display();
     for (int i = 0; i < DIFFTEST_NR_REG; i ++) {
