@@ -155,6 +155,9 @@ extern unsigned long EMU_FLASH_SIZE;
 // Enable DASICS Difftest
 #define DASICS_DIFF
 
+// Enable Zicfilp (CFI Landing Pad) Difftest
+#define ZICFILP_DIFF
+
 // -----------------------------------------------------------------------
 // Debug mode and trigger
 // -----------------------------------------------------------------------

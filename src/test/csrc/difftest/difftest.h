@@ -133,6 +133,13 @@ typedef struct __attribute__((packed)) {
   uint64_t djbound2lo, djbound2hi, djbound3lo, djbound3hi;
   uint64_t upkru, spkrs, spkctl;
 #endif  // DASICS_DIFF
+
+#ifdef ZICFILP_DIFF
+  // Zicfilp CSRs for difftest
+  uint64_t menvcfg;  // Machine Environment Configuration (LPE bit)
+  uint64_t senvcfg;  // Supervisor Environment Configuration (LPE bit)
+  uint64_t mseccfg;  // Machine Security Configuration (MLPE bit)
+#endif  // ZICFILP_DIFF
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {
