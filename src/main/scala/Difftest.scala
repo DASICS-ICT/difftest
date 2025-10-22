@@ -119,6 +119,9 @@ class DiffCSRStateIO extends DifftestBundle {
   val upkru = Input(UInt(64.W))
   val spkrs = Input(UInt(64.W))
   val spkctl = Input(UInt(64.W))
+  val menvcfg = Input(UInt(64.W))
+  val senvcfg = Input(UInt(64.W))
+  val mseccfg = Input(UInt(64.W))
 }
 
 class DiffDebugModeIO extends DifftestBundle {
