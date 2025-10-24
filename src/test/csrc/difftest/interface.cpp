@@ -178,6 +178,12 @@ INTERFACE_CSR_STATE {
   packet->spkctl = spkctl;
 #endif  // DASICS_DIFF
 
+#ifdef ZICFILP_DIFF
+  packet->menvcfg = menvcfg;
+  packet->senvcfg = senvcfg;
+  packet->mseccfg = mseccfg;
+#endif  // ZICFILP_DIFF
+
 }
 
 INTERFACE_DM_STATE {

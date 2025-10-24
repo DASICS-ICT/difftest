@@ -202,7 +202,10 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG djbound3hi,            \
     DPIC_ARG_LONG upkru,                 \
     DPIC_ARG_LONG spkrs,                 \
-    DPIC_ARG_LONG spkctl                 \
+    DPIC_ARG_LONG spkctl,                \
+    DPIC_ARG_LONG menvcfg,               \
+    DPIC_ARG_LONG senvcfg,               \
+    DPIC_ARG_LONG mseccfg                \
   )
 
 // v_difftest_DebugMode
