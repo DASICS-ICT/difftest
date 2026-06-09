@@ -30,6 +30,7 @@
 #ifdef CONFIG_DIFFTEST_QUERY
 #include "query.h"
 #endif // CONFIG_DIFFTEST_QUERY
+#include <cstdlib>
 
 Difftest **difftest = NULL;
 
@@ -37,6 +38,13 @@ typedef union {
     uint64_t u64;
     uint8_t u8[8];
 } uint64_splitter;
+
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+static bool fdi_runtime_observer_enabled() {
+  const char *env = std::getenv("FDI_RUNTIME_OBSERVER");
+  return env != NULL && env[0] != '\0' && !(env[0] == '0' && env[1] == '\0');
+}
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
 int difftest_init() {
 #ifdef CONFIG_DIFFTEST_PERFCNT
@@ -146,6 +154,11 @@ void difftest_finish() {
   uint64_t cycleCnt = difftest[0]->get_trap_event()->cycleCnt;
   difftest_perfcnt_finish(cycleCnt);
 #endif // CONFIG_DIFFTEST_PERFCNT
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  for (int i = 0; i < NUM_CORES; i++) {
+    difftest[i]->fdi_runtime_observer("finish");
+  }
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 #ifdef CONFIG_DIFFTEST_IOTRACE
   difftest_iotrace_free();
 #endif // CONFIG_DIFFTEST_IOTRACE
@@ -214,6 +227,36 @@ Difftest::~Difftest() {
   }
 #endif // CONFIG_DIFFTEST_REPLAY
 }
+
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+void Difftest::fdi_runtime_observer(const char *stage) {
+  if (!fdi_runtime_observer_enabled()) {
+    return;
+  }
+
+  auto &fdi = dut->fdi_csr;
+  printf(
+      "FDI_RUNTIME_OBSERVER stage=%s core=%d event.valid=%u event.exception=0x%016lx event.exceptionPC=0x%016lx "
+      "event.exceptionInst=0x%08x fdi_csr.fdiSMainCfg=0x%016lx fdi_csr.fdiUMainCfg=0x%016lx "
+      "fdi_csr.fdiSMainBoundLo=0x%016lx fdi_csr.fdiSMainBoundHi=0x%016lx "
+      "fdi_csr.fdiUMainBoundLo=0x%016lx fdi_csr.fdiUMainBoundHi=0x%016lx "
+      "fdi_csr.fdiLibCfg=0x%016lx fdi_csr.fdiLibBound0=0x%016lx fdi_csr.fdiLibBound1=0x%016lx "
+      "fdi_csr.fdiMainCallEntry=0x%016lx fdi_csr.fdiReturnPC=0x%016lx "
+      "fdi_csr.fdiActiveZoneReturnPC=0x%016lx fdi_csr.fdiFReason=0x%016lx "
+      "fdi_csr.fdiJumpCfg=0x%016lx fdi_csr.fdiJumpBound0=0x%016lx fdi_csr.fdiJumpBound1=0x%016lx\n",
+      stage, id, dut->event.valid, static_cast<unsigned long>(dut->event.exception),
+      static_cast<unsigned long>(dut->event.exceptionPC), dut->event.exceptionInst,
+      static_cast<unsigned long>(fdi.fdiSMainCfg), static_cast<unsigned long>(fdi.fdiUMainCfg),
+      static_cast<unsigned long>(fdi.fdiSMainBoundLo), static_cast<unsigned long>(fdi.fdiSMainBoundHi),
+      static_cast<unsigned long>(fdi.fdiUMainBoundLo), static_cast<unsigned long>(fdi.fdiUMainBoundHi),
+      static_cast<unsigned long>(fdi.fdiLibCfg), static_cast<unsigned long>(fdi.fdiLibBound[0]),
+      static_cast<unsigned long>(fdi.fdiLibBound[1]), static_cast<unsigned long>(fdi.fdiMainCallEntry),
+      static_cast<unsigned long>(fdi.fdiReturnPC), static_cast<unsigned long>(fdi.fdiActiveZoneReturnPC),
+      static_cast<unsigned long>(fdi.fdiFReason), static_cast<unsigned long>(fdi.fdiJumpCfg),
+      static_cast<unsigned long>(fdi.fdiJumpBound[0]), static_cast<unsigned long>(fdi.fdiJumpBound[1]));
+  fflush(stdout);
+}
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
 #if defined(CONFIG_DIFFTEST_LOADEVENT) && defined(CONFIG_DIFFTEST_ARCHVECREGSTATE)
 bool enable_vec_load_goldenmem_check = true;
@@ -411,6 +454,9 @@ inline int Difftest::check_all() {
   if (dut->event.valid) {
     // interrupt has a higher priority than exception
     dut->event.interrupt ? do_interrupt() : do_exception();
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+    fdi_runtime_observer(dut->event.interrupt ? "interrupt" : "exception");
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
     dut->event.valid = 0;
     dut->commit[0].valid = 0;
   } else {

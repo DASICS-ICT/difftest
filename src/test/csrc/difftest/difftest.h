@@ -258,6 +258,9 @@ public:
 
   void display();
   void display_stats();
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  void fdi_runtime_observer(const char *stage);
+#endif
 
   void set_trace(const char *name, bool is_read) {
     difftrace = new DiffTrace<DiffTestState>(name, is_read);
