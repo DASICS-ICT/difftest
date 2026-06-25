@@ -824,7 +824,9 @@ int Emulator::tick() {
     uint8_t chout = dut_ptr->difftest_uart_out_ch;
     uint8_t end = (chout & 0x80) >> 7;
     uint8_t code = chout & 0x7f;
-    if(end) {
+    // UART output may carry regular 8-bit console data; Linux can emit 0xff.
+    // Keep the legacy high-bit exit marker, but do not treat 0xff as an exit.
+    if(end && chout != 0xff) {
       printf("Software killed simulation with code %d\n", code);
       fflush(stdout);
       if(code == 0) {
