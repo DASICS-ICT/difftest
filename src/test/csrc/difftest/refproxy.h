@@ -79,6 +79,25 @@ static const char *regs_name_triggercsr[] = {
   "tselect", "tdata1", "tinfo"
 };
 
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+static const char *regs_name_fdi_csr[] = {
+  "fdiSMainCfg", "fdiUMainCfg", "fdiSMainBoundLo", "fdiSMainBoundHi",
+  "fdiUMainBoundLo", "fdiUMainBoundHi", "fdiLibCfg",
+  "fdiLibBound[0]", "fdiLibBound[1]", "fdiLibBound[2]", "fdiLibBound[3]",
+  "fdiLibBound[4]", "fdiLibBound[5]", "fdiLibBound[6]", "fdiLibBound[7]",
+  "fdiLibBound[8]", "fdiLibBound[9]", "fdiLibBound[10]", "fdiLibBound[11]",
+  "fdiLibBound[12]", "fdiLibBound[13]", "fdiLibBound[14]", "fdiLibBound[15]",
+  "fdiLibBound[16]", "fdiLibBound[17]", "fdiLibBound[18]", "fdiLibBound[19]",
+  "fdiLibBound[20]", "fdiLibBound[21]", "fdiLibBound[22]", "fdiLibBound[23]",
+  "fdiLibBound[24]", "fdiLibBound[25]", "fdiLibBound[26]", "fdiLibBound[27]",
+  "fdiLibBound[28]", "fdiLibBound[29]", "fdiLibBound[30]", "fdiLibBound[31]",
+  "fdiMainCallEntry", "fdiReturnPC", "fdiActiveZoneReturnPC", "fdiFReason",
+  "fdiJumpCfg",
+  "fdiJumpBound[0]", "fdiJumpBound[1]", "fdiJumpBound[2]", "fdiJumpBound[3]",
+  "fdiJumpBound[4]", "fdiJumpBound[5]", "fdiJumpBound[6]", "fdiJumpBound[7]"
+};
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
+
 /* clang-format on */
 
 enum {
@@ -207,6 +226,9 @@ public:
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
   DifftestTriggerCSRState triggercsr;
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  DifftestFDICSRState fdi_csr;
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
   inline uint64_t *arch_reg(uint8_t src, bool is_fp = false) {
     return
@@ -223,11 +245,18 @@ public:
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
   inline void sync(bool is_from_dut = false) {
     ref_regcpy(&regs_int, is_from_dut, is_from_dut);
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+    is_from_dut ? sync_fdi_csr_to_ref(fdi_csr) : sync_fdi_csr_from_ref();
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
   }
 
   void regcpy(DiffTestState *dut);
   int compare(DiffTestState *dut);
   void display(DiffTestState *dut = nullptr);
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  void sync_fdi_csr_from_ref();
+  void sync_fdi_csr_to_ref(const DifftestFDICSRState &dut_fdi_csr);
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
   inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata) {
     bool wen = rfwen | fpwen;
@@ -402,6 +431,9 @@ public:
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
            + sizeof(DifftestTriggerCSRState)
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+           + sizeof(DifftestFDICSRState)
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
         ;
   }
 
