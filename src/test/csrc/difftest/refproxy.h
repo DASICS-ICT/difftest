@@ -35,7 +35,9 @@ static const char *regs_name_csr[] = {
   "sepc", "mtval", "stval",
   "mtvec",
   "stvec", "mcause", "scause", "satp", "mip", "mie",
-  "mscratch", "sscratch", "mideleg", "medeleg"
+  "mscratch", "sscratch", "mideleg", "medeleg",
+  "ustatus", "uie", "utvec", "uscratch",
+  "uepc", "ucause", "utval", "uip"
 };
 
 static const char *regs_name_hcsr[] = {

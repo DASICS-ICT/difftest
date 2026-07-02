@@ -130,6 +130,14 @@ class CSRState extends DifftestBaseBundle {
   val sscratch = UInt(64.W)
   val mideleg = UInt(64.W)
   val medeleg = UInt(64.W)
+  val ustatus = UInt(64.W)
+  val uie = UInt(64.W)
+  val utvec = UInt(64.W)
+  val uscratch = UInt(64.W)
+  val uepc = UInt(64.W)
+  val ucause = UInt(64.W)
+  val utval = UInt(64.W)
+  val uip = UInt(64.W)
 
   def toSeq: Seq[UInt] = getElements.map(_.asUInt)
   def names: Seq[String] = elements.keys.toSeq
