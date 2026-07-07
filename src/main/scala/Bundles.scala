@@ -148,12 +148,18 @@ class CSRState extends DifftestBaseBundle {
 
 class DasicsCSRState extends DifftestBaseBundle {
   val dasicsMainCfg = UInt(64.W)
+  val dasicsSMainCfg = UInt(64.W)
+  val dasicsUMainCfg = UInt(64.W)
+  val dasicsSMBoundLo = UInt(64.W)
+  val dasicsSMBoundHi = UInt(64.W)
   val dasicsUMBoundLo = UInt(64.W)
   val dasicsUMBoundHi = UInt(64.W)
   val dasicsLibCfg = UInt(64.W)
   val dasicsLibBound = Vec(32, UInt(64.W))
   val dasicsMainCall = UInt(64.W)
   val dasicsReturnPC = UInt(64.W)
+  val dasicsActiveZoneReturnPC = UInt(64.W)
+  val dasicsFReason = UInt(64.W)
   val dasicsJumpCfg = UInt(64.W)
   val dasicsJumpBound = Vec(8, UInt(64.W))
 }

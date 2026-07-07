@@ -49,6 +49,8 @@ static const char *regs_name_hcsr[] = {
 
 static const char *regs_name_dasicscsr[] = {
   "dasicsMainCfg",
+  "dasicsSMainCfg", "dasicsUMainCfg",
+  "dasicsSMBoundLo", "dasicsSMBoundHi",
   "dasicsUMBoundLo", "dasicsUMBoundHi",
   "dasicsLibCfg",
   "dasicsLibBound0", "dasicsLibBound1", "dasicsLibBound2", "dasicsLibBound3",
@@ -60,6 +62,7 @@ static const char *regs_name_dasicscsr[] = {
   "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
   "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
   "dasicsMainCall", "dasicsReturnPC",
+  "dasicsActiveZoneReturnPC", "dasicsFReason",
   "dasicsJumpCfg",
   "dasicsJumpBound0", "dasicsJumpBound1", "dasicsJumpBound2", "dasicsJumpBound3",
   "dasicsJumpBound4", "dasicsJumpBound5", "dasicsJumpBound6", "dasicsJumpBound7"
