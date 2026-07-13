@@ -42,6 +42,8 @@ constexpr size_t kSMainBoundHi = 0xbc3;
 constexpr uint64_t kSMainCfgMask = 0x3ff;
 constexpr uint64_t kUMainCfgMask = 0x3e;
 constexpr uint64_t kFReasonMask = 0x7;
+// Bound CSRs are 8-byte aligned, so bits [2:0] are WARL-zero.
+constexpr uint64_t kBoundMask = ~UINT64_C(0x7);
 constexpr size_t kLibBoundCount = 32;
 constexpr size_t kJumpBoundCount = 8;
 

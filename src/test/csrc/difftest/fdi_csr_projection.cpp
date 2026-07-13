@@ -30,13 +30,13 @@ void from_csr_array(DifftestFDICSRState *fdi_csr, const uint64_t *csr_array) {
 
   fdi_csr->fdiSMainCfg = main_cfg & kSMainCfgMask;
   fdi_csr->fdiUMainCfg = main_cfg & kUMainCfgMask;
-  fdi_csr->fdiSMainBoundLo = csr_array[kSMainBoundLo];
-  fdi_csr->fdiSMainBoundHi = csr_array[kSMainBoundHi];
-  fdi_csr->fdiUMainBoundLo = csr_array[kUMainBoundLo];
-  fdi_csr->fdiUMainBoundHi = csr_array[kUMainBoundHi];
+  fdi_csr->fdiSMainBoundLo = csr_array[kSMainBoundLo] & kBoundMask;
+  fdi_csr->fdiSMainBoundHi = csr_array[kSMainBoundHi] & kBoundMask;
+  fdi_csr->fdiUMainBoundLo = csr_array[kUMainBoundLo] & kBoundMask;
+  fdi_csr->fdiUMainBoundHi = csr_array[kUMainBoundHi] & kBoundMask;
   fdi_csr->fdiLibCfg = csr_array[kLibCfg];
   for (size_t i = 0; i < kLibBoundCount; i++) {
-    fdi_csr->fdiLibBound[i] = csr_array[kLibBoundBase + i];
+    fdi_csr->fdiLibBound[i] = csr_array[kLibBoundBase + i] & kBoundMask;
   }
   fdi_csr->fdiMainCallEntry = csr_array[kMainCallEntry];
   fdi_csr->fdiReturnPC = csr_array[kReturnPC];
@@ -44,7 +44,7 @@ void from_csr_array(DifftestFDICSRState *fdi_csr, const uint64_t *csr_array) {
   fdi_csr->fdiFReason = csr_array[kFReason] & kFReasonMask;
   fdi_csr->fdiJumpCfg = csr_array[kJumpCfg];
   for (size_t i = 0; i < kJumpBoundCount; i++) {
-    fdi_csr->fdiJumpBound[i] = csr_array[kJumpBoundBase + i];
+    fdi_csr->fdiJumpBound[i] = csr_array[kJumpBoundBase + i] & kBoundMask;
   }
 }
 
@@ -62,14 +62,14 @@ void to_csr_array(uint64_t *csr_array, const DifftestFDICSRState &fdi_csr) {
   }
   const uint64_t main_cfg = (smain_cfg & ~kUMainCfgMask) | umain_cfg;
 
-  csr_array[kSMainCfg] = (csr_array[kSMainCfg] & ~kSMainCfgMask) | main_cfg;
-  csr_array[kSMainBoundLo] = fdi_csr.fdiSMainBoundLo;
-  csr_array[kSMainBoundHi] = fdi_csr.fdiSMainBoundHi;
-  csr_array[kUMainBoundLo] = fdi_csr.fdiUMainBoundLo;
-  csr_array[kUMainBoundHi] = fdi_csr.fdiUMainBoundHi;
+  csr_array[kSMainCfg] = main_cfg;
+  csr_array[kSMainBoundLo] = fdi_csr.fdiSMainBoundLo & kBoundMask;
+  csr_array[kSMainBoundHi] = fdi_csr.fdiSMainBoundHi & kBoundMask;
+  csr_array[kUMainBoundLo] = fdi_csr.fdiUMainBoundLo & kBoundMask;
+  csr_array[kUMainBoundHi] = fdi_csr.fdiUMainBoundHi & kBoundMask;
   csr_array[kLibCfg] = fdi_csr.fdiLibCfg;
   for (size_t i = 0; i < kLibBoundCount; i++) {
-    csr_array[kLibBoundBase + i] = fdi_csr.fdiLibBound[i];
+    csr_array[kLibBoundBase + i] = fdi_csr.fdiLibBound[i] & kBoundMask;
   }
   csr_array[kMainCallEntry] = fdi_csr.fdiMainCallEntry;
   csr_array[kReturnPC] = fdi_csr.fdiReturnPC;
@@ -77,7 +77,7 @@ void to_csr_array(uint64_t *csr_array, const DifftestFDICSRState &fdi_csr) {
   csr_array[kFReason] = fdi_csr.fdiFReason & kFReasonMask;
   csr_array[kJumpCfg] = fdi_csr.fdiJumpCfg;
   for (size_t i = 0; i < kJumpBoundCount; i++) {
-    csr_array[kJumpBoundBase + i] = fdi_csr.fdiJumpBound[i];
+    csr_array[kJumpBoundBase + i] = fdi_csr.fdiJumpBound[i] & kBoundMask;
   }
 }
 

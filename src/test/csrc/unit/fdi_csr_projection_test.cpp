@@ -31,6 +31,17 @@ static_assert(sizeof(DifftestFDICSRState) == 52 * sizeof(uint64_t), "FDI CSR sta
 namespace {
 
 int failures = 0;
+constexpr uint64_t kArchitecturalSMainCfgMask = UINT64_C(0x3ff);
+constexpr uint64_t kArchitecturalUMainCfgMask = UINT64_C(0x3e);
+constexpr uint64_t kArchitecturalFReasonMask = UINT64_C(0x7);
+constexpr uint64_t kArchitecturalBoundMask = ~UINT64_C(0x7);
+constexpr uint64_t kSMainCfgLegalValue = UINT64_C(0x2d5);
+constexpr uint64_t kFReasonLegalValue = UINT64_C(0x5);
+
+static_assert(fdi::kSMainCfgMask == kArchitecturalSMainCfgMask, "SMainCfg mask must match the ISA");
+static_assert(fdi::kUMainCfgMask == kArchitecturalUMainCfgMask, "UMainCfg mask must match the ISA");
+static_assert(fdi::kFReasonMask == kArchitecturalFReasonMask, "FReason mask must match the ISA");
+static_assert(fdi::kBoundMask == kArchitecturalBoundMask, "bound mask must match the ISA");
 
 void expect_equal(uint64_t actual, uint64_t expected, const char *label, size_t index = 0) {
   if (actual != expected) {
@@ -52,6 +63,18 @@ uint64_t csr_sentinel(size_t csr) {
 
 uint64_t field_sentinel(size_t field) {
   return UINT64_C(0xa200000000000000) | (static_cast<uint64_t>(field) << 16);
+}
+
+uint64_t bound_csr_sentinel(size_t csr) {
+  return UINT64_C(0x9300000000000000) | (static_cast<uint64_t>(csr) << 3) | UINT64_C(0x7);
+}
+
+uint64_t full_width_csr_sentinel(size_t csr) {
+  return UINT64_C(0x9400000000000000) | (static_cast<uint64_t>(csr) << 3) | UINT64_C(0x7);
+}
+
+uint64_t full_width_field_sentinel(size_t field) {
+  return field_sentinel(field) | UINT64_C(0x7);
 }
 
 struct GuardedCSRArray {
@@ -103,8 +126,25 @@ void initialize_csr_array(GuardedCSRArray *guarded) {
   for (size_t i = 0; i < guarded->values.size(); i++) {
     guarded->values[i] = csr_sentinel(i);
   }
-  guarded->values[fdi::kSMainCfg] = UINT64_C(0xf1000000000002d5);
-  guarded->values[fdi::kFReason] = UINT64_C(0xf200000000000005);
+  guarded->values[fdi::kSMainCfg] = ~kArchitecturalSMainCfgMask | kSMainCfgLegalValue;
+  guarded->values[fdi::kFReason] = ~kArchitecturalFReasonMask | kFReasonLegalValue;
+  guarded->values[fdi::kSMainBoundLo] = bound_csr_sentinel(fdi::kSMainBoundLo);
+  guarded->values[fdi::kSMainBoundHi] = bound_csr_sentinel(fdi::kSMainBoundHi);
+  guarded->values[fdi::kUMainBoundLo] = bound_csr_sentinel(fdi::kUMainBoundLo);
+  guarded->values[fdi::kUMainBoundHi] = bound_csr_sentinel(fdi::kUMainBoundHi);
+  for (size_t i = 0; i < fdi::kLibBoundCount; i++) {
+    const size_t csr = fdi::kLibBoundBase + i;
+    guarded->values[csr] = bound_csr_sentinel(csr);
+  }
+  for (size_t i = 0; i < fdi::kJumpBoundCount; i++) {
+    const size_t csr = fdi::kJumpBoundBase + i;
+    guarded->values[csr] = bound_csr_sentinel(csr);
+  }
+  guarded->values[fdi::kLibCfg] = full_width_csr_sentinel(fdi::kLibCfg);
+  guarded->values[fdi::kMainCallEntry] = full_width_csr_sentinel(fdi::kMainCallEntry);
+  guarded->values[fdi::kReturnPC] = full_width_csr_sentinel(fdi::kReturnPC);
+  guarded->values[fdi::kActiveZoneReturnPC] = full_width_csr_sentinel(fdi::kActiveZoneReturnPC);
+  guarded->values[fdi::kJumpCfg] = full_width_csr_sentinel(fdi::kJumpCfg);
 }
 
 void check_canaries(const GuardedCSRArray &guarded) {
@@ -115,23 +155,27 @@ void check_canaries(const GuardedCSRArray &guarded) {
 DifftestFDICSRState make_reverse_state() {
   DifftestFDICSRState state = {};
   size_t field = 0;
-  state.fdiSMainCfg = field_sentinel(field++) | UINT64_C(0x2d5);
-  state.fdiUMainCfg = field_sentinel(field++) | UINT64_C(0x14);
-  state.fdiSMainBoundLo = field_sentinel(field++);
-  state.fdiSMainBoundHi = field_sentinel(field++);
-  state.fdiUMainBoundLo = field_sentinel(field++);
-  state.fdiUMainBoundHi = field_sentinel(field++);
-  state.fdiLibCfg = field_sentinel(field++);
+  state.fdiSMainCfg = ~kArchitecturalSMainCfgMask | kSMainCfgLegalValue;
+  field++;
+  state.fdiUMainCfg = ~kArchitecturalUMainCfgMask |
+                      (kSMainCfgLegalValue & kArchitecturalUMainCfgMask);
+  field++;
+  state.fdiSMainBoundLo = field_sentinel(field++) | UINT64_C(0x7);
+  state.fdiSMainBoundHi = field_sentinel(field++) | UINT64_C(0x7);
+  state.fdiUMainBoundLo = field_sentinel(field++) | UINT64_C(0x7);
+  state.fdiUMainBoundHi = field_sentinel(field++) | UINT64_C(0x7);
+  state.fdiLibCfg = full_width_field_sentinel(field++);
   for (size_t i = 0; i < fdi::kLibBoundCount; i++) {
-    state.fdiLibBound[i] = field_sentinel(field++);
+    state.fdiLibBound[i] = field_sentinel(field++) | UINT64_C(0x7);
   }
-  state.fdiMainCallEntry = field_sentinel(field++);
-  state.fdiReturnPC = field_sentinel(field++);
-  state.fdiActiveZoneReturnPC = field_sentinel(field++);
-  state.fdiFReason = field_sentinel(field++) | UINT64_C(0x5);
-  state.fdiJumpCfg = field_sentinel(field++);
+  state.fdiMainCallEntry = full_width_field_sentinel(field++);
+  state.fdiReturnPC = full_width_field_sentinel(field++);
+  state.fdiActiveZoneReturnPC = full_width_field_sentinel(field++);
+  state.fdiFReason = ~kArchitecturalFReasonMask | kFReasonLegalValue;
+  field++;
+  state.fdiJumpCfg = full_width_field_sentinel(field++);
   for (size_t i = 0; i < fdi::kJumpBoundCount; i++) {
-    state.fdiJumpBound[i] = field_sentinel(field++);
+    state.fdiJumpBound[i] = field_sentinel(field++) | UINT64_C(0x7);
   }
   expect_equal(field, 52, "initialized field count");
   return state;
@@ -147,23 +191,32 @@ void test_from_csr_array() {
 
   fdi::from_csr_array(&state, guarded.values.data());
 
-  expect_equal(state.fdiSMainCfg, UINT64_C(0x2d5), "fdiSMainCfg");
-  expect_equal(state.fdiUMainCfg, UINT64_C(0x14), "fdiUMainCfg");
-  expect_equal(state.fdiSMainBoundLo, csr_sentinel(fdi::kSMainBoundLo), "fdiSMainBoundLo");
-  expect_equal(state.fdiSMainBoundHi, csr_sentinel(fdi::kSMainBoundHi), "fdiSMainBoundHi");
-  expect_equal(state.fdiUMainBoundLo, csr_sentinel(fdi::kUMainBoundLo), "fdiUMainBoundLo");
-  expect_equal(state.fdiUMainBoundHi, csr_sentinel(fdi::kUMainBoundHi), "fdiUMainBoundHi");
-  expect_equal(state.fdiLibCfg, csr_sentinel(fdi::kLibCfg), "fdiLibCfg");
+  expect_equal(state.fdiSMainCfg, kSMainCfgLegalValue, "fdiSMainCfg");
+  expect_equal(state.fdiUMainCfg, kSMainCfgLegalValue & kArchitecturalUMainCfgMask, "fdiUMainCfg");
+  expect_equal(state.fdiSMainBoundLo, bound_csr_sentinel(fdi::kSMainBoundLo) & kArchitecturalBoundMask,
+               "fdiSMainBoundLo");
+  expect_equal(state.fdiSMainBoundHi, bound_csr_sentinel(fdi::kSMainBoundHi) & kArchitecturalBoundMask,
+               "fdiSMainBoundHi");
+  expect_equal(state.fdiUMainBoundLo, bound_csr_sentinel(fdi::kUMainBoundLo) & kArchitecturalBoundMask,
+               "fdiUMainBoundLo");
+  expect_equal(state.fdiUMainBoundHi, bound_csr_sentinel(fdi::kUMainBoundHi) & kArchitecturalBoundMask,
+               "fdiUMainBoundHi");
+  expect_equal(state.fdiLibCfg, full_width_csr_sentinel(fdi::kLibCfg), "fdiLibCfg");
   for (size_t i = 0; i < fdi::kLibBoundCount; i++) {
-    expect_equal(state.fdiLibBound[i], csr_sentinel(fdi::kLibBoundBase + i), "fdiLibBound", i);
+    expect_equal(state.fdiLibBound[i],
+                 bound_csr_sentinel(fdi::kLibBoundBase + i) & kArchitecturalBoundMask,
+                 "fdiLibBound", i);
   }
-  expect_equal(state.fdiMainCallEntry, csr_sentinel(fdi::kMainCallEntry), "fdiMainCallEntry");
-  expect_equal(state.fdiReturnPC, csr_sentinel(fdi::kReturnPC), "fdiReturnPC");
-  expect_equal(state.fdiActiveZoneReturnPC, csr_sentinel(fdi::kActiveZoneReturnPC), "fdiActiveZoneReturnPC");
-  expect_equal(state.fdiFReason, UINT64_C(0x5), "fdiFReason");
-  expect_equal(state.fdiJumpCfg, csr_sentinel(fdi::kJumpCfg), "fdiJumpCfg");
+  expect_equal(state.fdiMainCallEntry, full_width_csr_sentinel(fdi::kMainCallEntry), "fdiMainCallEntry");
+  expect_equal(state.fdiReturnPC, full_width_csr_sentinel(fdi::kReturnPC), "fdiReturnPC");
+  expect_equal(state.fdiActiveZoneReturnPC, full_width_csr_sentinel(fdi::kActiveZoneReturnPC),
+               "fdiActiveZoneReturnPC");
+  expect_equal(state.fdiFReason, kFReasonLegalValue, "fdiFReason");
+  expect_equal(state.fdiJumpCfg, full_width_csr_sentinel(fdi::kJumpCfg), "fdiJumpCfg");
   for (size_t i = 0; i < fdi::kJumpBoundCount; i++) {
-    expect_equal(state.fdiJumpBound[i], csr_sentinel(fdi::kJumpBoundBase + i), "fdiJumpBound", i);
+    expect_equal(state.fdiJumpBound[i],
+                 bound_csr_sentinel(fdi::kJumpBoundBase + i) & kArchitecturalBoundMask,
+                 "fdiJumpBound", i);
   }
   expect_unique_fields(state);
   check_canaries(guarded);
@@ -198,24 +251,30 @@ void test_to_csr_array() {
 
   fdi::to_csr_array(guarded.values.data(), state);
 
-  const uint64_t expected_main_cfg =
-      (before[fdi::kSMainCfg] & ~fdi::kSMainCfgMask) | (state.fdiSMainCfg & fdi::kSMainCfgMask);
+  const uint64_t expected_main_cfg = state.fdiSMainCfg & kArchitecturalSMainCfgMask;
   expect_equal(guarded.values[fdi::kSMainCfg], expected_main_cfg, "SMainCfg backing CSR");
-  expect_equal(guarded.values[fdi::kSMainBoundLo], state.fdiSMainBoundLo, "SMainBoundLo CSR");
-  expect_equal(guarded.values[fdi::kSMainBoundHi], state.fdiSMainBoundHi, "SMainBoundHi CSR");
-  expect_equal(guarded.values[fdi::kUMainBoundLo], state.fdiUMainBoundLo, "UMainBoundLo CSR");
-  expect_equal(guarded.values[fdi::kUMainBoundHi], state.fdiUMainBoundHi, "UMainBoundHi CSR");
+  expect_equal(guarded.values[fdi::kSMainBoundLo], state.fdiSMainBoundLo & kArchitecturalBoundMask,
+               "SMainBoundLo CSR");
+  expect_equal(guarded.values[fdi::kSMainBoundHi], state.fdiSMainBoundHi & kArchitecturalBoundMask,
+               "SMainBoundHi CSR");
+  expect_equal(guarded.values[fdi::kUMainBoundLo], state.fdiUMainBoundLo & kArchitecturalBoundMask,
+               "UMainBoundLo CSR");
+  expect_equal(guarded.values[fdi::kUMainBoundHi], state.fdiUMainBoundHi & kArchitecturalBoundMask,
+               "UMainBoundHi CSR");
   expect_equal(guarded.values[fdi::kLibCfg], state.fdiLibCfg, "LibCfg CSR");
   for (size_t i = 0; i < fdi::kLibBoundCount; i++) {
-    expect_equal(guarded.values[fdi::kLibBoundBase + i], state.fdiLibBound[i], "LibBound CSR", i);
+    expect_equal(guarded.values[fdi::kLibBoundBase + i], state.fdiLibBound[i] & kArchitecturalBoundMask,
+                 "LibBound CSR", i);
   }
   expect_equal(guarded.values[fdi::kMainCallEntry], state.fdiMainCallEntry, "MainCallEntry CSR");
   expect_equal(guarded.values[fdi::kReturnPC], state.fdiReturnPC, "ReturnPC CSR");
   expect_equal(guarded.values[fdi::kActiveZoneReturnPC], state.fdiActiveZoneReturnPC, "ActiveZoneReturnPC CSR");
-  expect_equal(guarded.values[fdi::kFReason], state.fdiFReason & fdi::kFReasonMask, "FReason CSR");
+  expect_equal(guarded.values[fdi::kFReason], state.fdiFReason & kArchitecturalFReasonMask,
+               "FReason CSR");
   expect_equal(guarded.values[fdi::kJumpCfg], state.fdiJumpCfg, "JumpCfg CSR");
   for (size_t i = 0; i < fdi::kJumpBoundCount; i++) {
-    expect_equal(guarded.values[fdi::kJumpBoundBase + i], state.fdiJumpBound[i], "JumpBound CSR", i);
+    expect_equal(guarded.values[fdi::kJumpBoundBase + i], state.fdiJumpBound[i] & kArchitecturalBoundMask,
+                 "JumpBound CSR", i);
   }
 
   std::array<bool, fdi::kCsrArraySize> projected = {};
@@ -234,9 +293,19 @@ void test_to_csr_array() {
   DifftestFDICSRState round_trip = {};
   fdi::from_csr_array(&round_trip, guarded.values.data());
   DifftestFDICSRState expected = state;
-  expected.fdiSMainCfg &= fdi::kSMainCfgMask;
-  expected.fdiUMainCfg &= fdi::kUMainCfgMask;
-  expected.fdiFReason &= fdi::kFReasonMask;
+  expected.fdiSMainCfg &= kArchitecturalSMainCfgMask;
+  expected.fdiUMainCfg &= kArchitecturalUMainCfgMask;
+  expected.fdiSMainBoundLo &= kArchitecturalBoundMask;
+  expected.fdiSMainBoundHi &= kArchitecturalBoundMask;
+  expected.fdiUMainBoundLo &= kArchitecturalBoundMask;
+  expected.fdiUMainBoundHi &= kArchitecturalBoundMask;
+  for (size_t i = 0; i < fdi::kLibBoundCount; i++) {
+    expected.fdiLibBound[i] &= kArchitecturalBoundMask;
+  }
+  expected.fdiFReason &= kArchitecturalFReasonMask;
+  for (size_t i = 0; i < fdi::kJumpBoundCount; i++) {
+    expected.fdiJumpBound[i] &= kArchitecturalBoundMask;
+  }
   const std::array<uint64_t, 52> actual_words = flatten(round_trip);
   const std::array<uint64_t, 52> expected_words = flatten(expected);
   for (size_t i = 0; i < actual_words.size(); i++) {
