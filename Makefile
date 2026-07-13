@@ -247,6 +247,25 @@ include palladium.mk
 include libso.mk
 include fpga.mk
 
+HOST_CXX ?= c++
+HOST_TEST_BUILD_DIR ?= $(BUILD_DIR)/host-tests
+FDI_CSR_PROJECTION_TEST := $(HOST_TEST_BUILD_DIR)/fdi-csr-projection-test
+FDI_CSR_PROJECTION_SRC := $(abspath ./src/test/csrc/difftest/fdi_csr_projection.cpp)
+FDI_CSR_PROJECTION_TEST_SRC := $(abspath ./src/test/csrc/unit/fdi_csr_projection_test.cpp)
+FDI_CSR_PROJECTION_HEADERS := $(abspath ./src/test/csrc/difftest/fdi_csr_projection.h) $(GEN_CSRC_DIR)/diffstate.h
+FDI_CSR_PROJECTION_TEST_FLAGS := -std=c++11 -O1 -g -Wall -Wextra -Werror -DNDEBUG \
+	-fsanitize=address,undefined -fno-omit-frame-pointer
+
+$(FDI_CSR_PROJECTION_TEST): $(FDI_CSR_PROJECTION_SRC) $(FDI_CSR_PROJECTION_TEST_SRC) $(FDI_CSR_PROJECTION_HEADERS)
+	@mkdir -p $(@D)
+	$(HOST_CXX) $(FDI_CSR_PROJECTION_TEST_FLAGS) \
+		-I$(GEN_CSRC_DIR) -I$(DIFFTEST_CSRC_DIR) \
+		$(FDI_CSR_PROJECTION_SRC) $(FDI_CSR_PROJECTION_TEST_SRC) -o $@
+
+fdi-csr-projection-test: $(FDI_CSR_PROJECTION_TEST)
+	ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+	UBSAN_OPTIONS=halt_on_error=1 $<
+
 clean: vcs-clean pldm-clean fpga-clean
 	rm -rf $(BUILD_DIR)
 
@@ -265,4 +284,4 @@ else
 	@echo "Please run \"pip install --user clang-format==$(CLANG_FORMAT_VER)\", then set PATH manually"
 endif
 
-.PHONY: sim-verilog emu difftest_verilog clean format scala-format clang-format
+.PHONY: sim-verilog emu difftest_verilog clean format scala-format clang-format fdi-csr-projection-test
