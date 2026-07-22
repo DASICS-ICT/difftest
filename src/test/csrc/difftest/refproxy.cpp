@@ -15,6 +15,7 @@
 ***************************************************************************************/
 
 #include "refproxy.h"
+#include "fdi_csr_projection.h"
 #include <dlfcn.h>
 #include <fstream>
 #include <iostream>
@@ -166,6 +167,10 @@ void RefProxy::regcpy(DiffTestState *dut) {
   memcpy(&triggercsr, &dut->triggercsr, sizeof(triggercsr));
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE
   ref_regcpy(&regs_int, DUT_TO_REF, false);
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  memcpy(&fdi_csr, &dut->fdi_csr, sizeof(fdi_csr));
+  sync_fdi_csr_to_ref(fdi_csr);
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 };
 
 int RefProxy::compare(DiffTestState *dut) {
@@ -190,6 +195,9 @@ int RefProxy::compare(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
                          PROXY_COMPARE(triggercsr),
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+                         PROXY_COMPARE(fdi_csr),
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
                          PROXY_COMPARE(csr)
 
   };
@@ -245,10 +253,29 @@ void RefProxy::display(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
     PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr)
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+    sync_fdi_csr_from_ref();
+    PROXY_COMPARE_AND_DISPLAY(fdi_csr, regs_name_fdi_csr)
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
   } else {
     ref_reg_display();
   }
 };
+
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+void RefProxy::sync_fdi_csr_from_ref() {
+  uint64_t csr_array[difftest::fdi::kCsrArraySize];
+  ref_csrcpy(csr_array, REF_TO_DUT);
+  difftest::fdi::from_csr_array(&fdi_csr, csr_array);
+}
+
+void RefProxy::sync_fdi_csr_to_ref(const DifftestFDICSRState &dut_fdi_csr) {
+  uint64_t csr_array[difftest::fdi::kCsrArraySize];
+  ref_csrcpy(csr_array, REF_TO_DUT);
+  difftest::fdi::to_csr_array(csr_array, dut_fdi_csr);
+  ref_csrcpy(csr_array, DUT_TO_REF);
+}
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
 void RefProxy::flash_init(const uint8_t *flash_base, size_t size, const char *flash_bin) {
   if (load_flash_bin_v2) {

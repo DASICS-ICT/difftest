@@ -283,6 +283,12 @@ class DiffCSRState extends CSRState with DifftestBundle {
   override val supportsDelta: Boolean = true
 }
 
+class DiffFDICSRState extends FDICSRState with DifftestBundle {
+  override val desiredCppName: String = "fdi_csr"
+  override val updateDependency: Seq[String] = Seq("commit", "event")
+  override val supportsDelta: Boolean = true
+}
+
 class DiffHCSRState extends HCSRState with DifftestBundle {
   override val desiredCppName: String = "hcsr"
   override val desiredOffset: Int = 6

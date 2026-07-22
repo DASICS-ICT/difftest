@@ -824,14 +824,12 @@ int Emulator::tick() {
     uint8_t chout = dut_ptr->difftest_uart_out_ch;
     uint8_t end = (chout & 0x80) >> 7;
     uint8_t code = chout & 0x7f;
-    if(end) {
+    // UART output may carry regular 8-bit console data. Only 0x80 is kept as
+    // the legacy good-trap marker; other high-bit bytes are regular output.
+    if(end && code == 0) {
       printf("Software killed simulation with code %d\n", code);
       fflush(stdout);
-      if(code == 0) {
-        trapCode = STATE_GOODTRAP;;
-      } else {
-        trapCode = STATE_ABORT;
-      }
+      trapCode = STATE_GOODTRAP;
       return trapCode;
     }
   }
