@@ -113,6 +113,7 @@ class TrapEvent extends DifftestBaseBundle {
 
 class CSRState extends DifftestBaseBundle {
   val privilegeMode = UInt(64.W)
+  val virtMode = UInt(64.W)
   val mstatus = UInt(64.W)
   val sstatus = UInt(64.W)
   val mepc = UInt(64.W)
@@ -130,6 +131,16 @@ class CSRState extends DifftestBaseBundle {
   val sscratch = UInt(64.W)
   val mideleg = UInt(64.W)
   val medeleg = UInt(64.W)
+  val ustatus = UInt(64.W)
+  val uie = UInt(64.W)
+  val utvec = UInt(64.W)
+  val uscratch = UInt(64.W)
+  val uepc = UInt(64.W)
+  val ucause = UInt(64.W)
+  val utval = UInt(64.W)
+  val uip = UInt(64.W)
+  val sedeleg = UInt(64.W)
+  val sideleg = UInt(64.W)
 
   def toSeq: Seq[UInt] = getElements.map(_.asUInt)
   def names: Seq[String] = elements.keys.toSeq
