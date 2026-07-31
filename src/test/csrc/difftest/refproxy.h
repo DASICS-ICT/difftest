@@ -47,23 +47,24 @@ static const char *regs_name_hcsr[] = {
   "vstvec","vsepc", "vscause", "vstval", "vsatp", "vsscratch"
 };
 
-static const char *regs_name_dasicscsr[] = {
-  "dasicsMainCfg",
-  "dasicsUMBoundLo", "dasicsUMBoundHi",
-  "dasicsLibCfg",
-  "dasicsLibBound0", "dasicsLibBound1", "dasicsLibBound2", "dasicsLibBound3",
-  "dasicsLibBound4", "dasicsLibBound5", "dasicsLibBound6", "dasicsLibBound7",
-  "dasicsLibBound8", "dasicsLibBound9", "dasicsLibBound10", "dasicsLibBound11",
-  "dasicsLibBound12", "dasicsLibBound13", "dasicsLibBound14", "dasicsLibBound15",
-  "dasicsLibBound16", "dasicsLibBound17", "dasicsLibBound18", "dasicsLibBound19",
-  "dasicsLibBound20", "dasicsLibBound21", "dasicsLibBound22", "dasicsLibBound23",
-  "dasicsLibBound24", "dasicsLibBound25", "dasicsLibBound26", "dasicsLibBound27",
-  "dasicsLibBound28", "dasicsLibBound29", "dasicsLibBound30", "dasicsLibBound31",
-  "dasicsMainCall", "dasicsReturnPC",
-  "dasicsJumpCfg",
-  "dasicsJumpBound0", "dasicsJumpBound1", "dasicsJumpBound2", "dasicsJumpBound3",
-  "dasicsJumpBound4", "dasicsJumpBound5", "dasicsJumpBound6", "dasicsJumpBound7"
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+static const char *regs_name_fdi_csr[] = {
+  "fdiSMainCfg", "fdiUMainCfg", "fdiSMainBoundLo", "fdiSMainBoundHi",
+  "fdiUMainBoundLo", "fdiUMainBoundHi", "fdiLibCfg",
+  "fdiLibBound[0]", "fdiLibBound[1]", "fdiLibBound[2]", "fdiLibBound[3]",
+  "fdiLibBound[4]", "fdiLibBound[5]", "fdiLibBound[6]", "fdiLibBound[7]",
+  "fdiLibBound[8]", "fdiLibBound[9]", "fdiLibBound[10]", "fdiLibBound[11]",
+  "fdiLibBound[12]", "fdiLibBound[13]", "fdiLibBound[14]", "fdiLibBound[15]",
+  "fdiLibBound[16]", "fdiLibBound[17]", "fdiLibBound[18]", "fdiLibBound[19]",
+  "fdiLibBound[20]", "fdiLibBound[21]", "fdiLibBound[22]", "fdiLibBound[23]",
+  "fdiLibBound[24]", "fdiLibBound[25]", "fdiLibBound[26]", "fdiLibBound[27]",
+  "fdiLibBound[28]", "fdiLibBound[29]", "fdiLibBound[30]", "fdiLibBound[31]",
+  "fdiMainCallEntry", "fdiReturnPC", "fdiActiveZoneReturnPC", "fdiFReason",
+  "fdiJumpCfg",
+  "fdiJumpBound[0]", "fdiJumpBound[1]", "fdiJumpBound[2]", "fdiJumpBound[3]",
+  "fdiJumpBound[4]", "fdiJumpBound[5]", "fdiJumpBound[6]", "fdiJumpBound[7]"
 };
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
 static const char *regs_name_fp[] = {
   "ft0", "ft1", "ft2",  "ft3",  "ft4", "ft5", "ft6",  "ft7",
@@ -215,9 +216,9 @@ public:
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
   DifftestHCSRState hcsr;
 #endif // CONFIG_DIFFTEST_HCSRSTATE
-#ifdef CONFIG_DIFFTEST_DASICSCSRSTATE
-  DifftestDasicsCSRState dasicscsr;
-#endif // CONFIG_DIFFTEST_DASICSCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  DifftestFDICSRState fdi_csr;
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
   DifftestArchVecRegState regs_vec;
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
@@ -246,11 +247,18 @@ public:
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
   inline void sync(bool is_from_dut = false) {
     ref_regcpy(&regs_int, is_from_dut, is_from_dut);
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+    is_from_dut ? sync_fdi_csr_to_ref(fdi_csr) : sync_fdi_csr_from_ref();
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
   }
 
   void regcpy(DiffTestState *dut);
   int compare(DiffTestState *dut);
   void display(DiffTestState *dut = nullptr);
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  void sync_fdi_csr_from_ref();
+  void sync_fdi_csr_to_ref(const DifftestFDICSRState &dut_fdi_csr);
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
   inline void skip_one(bool isRVC, bool rfwen, bool fpwen, bool vecwen, uint32_t wdest, uint64_t wdata) {
     bool wen = rfwen | fpwen;
@@ -422,9 +430,9 @@ public:
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
            + sizeof(DifftestHCSRState)
 #endif // CONFIG_DIFFTEST_HCSRSTATE
-#ifdef CONFIG_DIFFTEST_DASICSCSRSTATE
-           + sizeof(DifftestDasicsCSRState)
-#endif // CONFIG_DIFFTEST_DASICSCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+           + sizeof(DifftestFDICSRState)
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
            + sizeof(DifftestTriggerCSRState)
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE

@@ -146,16 +146,21 @@ class CSRState extends DifftestBaseBundle {
   def =/=(that: CSRState): Bool = VecInit(toSeq.zip(that.toSeq).map(v => v._1 =/= v._2)).asUInt.orR
 }
 
-class DasicsCSRState extends DifftestBaseBundle {
-  val dasicsMainCfg = UInt(64.W)
-  val dasicsUMBoundLo = UInt(64.W)
-  val dasicsUMBoundHi = UInt(64.W)
-  val dasicsLibCfg = UInt(64.W)
-  val dasicsLibBound = Vec(32, UInt(64.W))
-  val dasicsMainCall = UInt(64.W)
-  val dasicsReturnPC = UInt(64.W)
-  val dasicsJumpCfg = UInt(64.W)
-  val dasicsJumpBound = Vec(8, UInt(64.W))
+class FDICSRState extends DifftestBaseBundle {
+  val fdiSMainCfg = UInt(64.W)
+  val fdiUMainCfg = UInt(64.W)
+  val fdiSMainBoundLo = UInt(64.W)
+  val fdiSMainBoundHi = UInt(64.W)
+  val fdiUMainBoundLo = UInt(64.W)
+  val fdiUMainBoundHi = UInt(64.W)
+  val fdiLibCfg = UInt(64.W)
+  val fdiLibBound = Vec(32, UInt(64.W))
+  val fdiMainCallEntry = UInt(64.W)
+  val fdiReturnPC = UInt(64.W)
+  val fdiActiveZoneReturnPC = UInt(64.W)
+  val fdiFReason = UInt(64.W)
+  val fdiJumpCfg = UInt(64.W)
+  val fdiJumpBound = Vec(8, UInt(64.W))
 }
 
 class HCSRState extends DifftestBaseBundle {

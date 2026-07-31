@@ -24,6 +24,74 @@
 uint8_t *ref_golden_mem = NULL;
 const char *difftest_ref_so = NULL;
 
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+static constexpr size_t FDI_CSR_ARRAY_SIZE = 4096;
+static constexpr size_t FDI_CSR_LIB_CFG = 0x880;
+static constexpr size_t FDI_CSR_LIB_BOUND_BASE = 0x890;
+static constexpr size_t FDI_CSR_MAIN_CALL_ENTRY = 0x8b0;
+static constexpr size_t FDI_CSR_RETURN_PC = 0x8b1;
+static constexpr size_t FDI_CSR_ACTIVE_ZONE_RETURN_PC = 0x8b2;
+static constexpr size_t FDI_CSR_FREASON = 0x8b3;
+static constexpr size_t FDI_CSR_JUMP_BOUND_BASE = 0x8c0;
+static constexpr size_t FDI_CSR_JUMP_CFG = 0x8c8;
+static constexpr size_t FDI_CSR_UMAIN_BOUND_LO = 0x9e2;
+static constexpr size_t FDI_CSR_UMAIN_BOUND_HI = 0x9e3;
+static constexpr size_t FDI_CSR_SMAIN_CFG = 0xbc0;
+static constexpr size_t FDI_CSR_SMAIN_BOUND_LO = 0xbc2;
+static constexpr size_t FDI_CSR_SMAIN_BOUND_HI = 0xbc3;
+static constexpr uint64_t FDI_MAIN_CFG_SMAIN_MASK = 0x3ff;
+static constexpr uint64_t FDI_MAIN_CFG_UMAIN_MASK = 0x3e;
+static constexpr uint64_t FDI_FREASON_MASK = 0x7;
+static constexpr int FDI_LIB_BOUND_COUNT = 32;
+static constexpr int FDI_JUMP_BOUND_COUNT = 8;
+
+static void fdi_csr_from_csr_array(DifftestFDICSRState *fdi_csr, const uint64_t *csr_array) {
+  const uint64_t main_cfg = csr_array[FDI_CSR_SMAIN_CFG];
+
+  fdi_csr->fdiSMainCfg = main_cfg & FDI_MAIN_CFG_SMAIN_MASK;
+  fdi_csr->fdiUMainCfg = main_cfg & FDI_MAIN_CFG_UMAIN_MASK;
+  fdi_csr->fdiSMainBoundLo = csr_array[FDI_CSR_SMAIN_BOUND_LO];
+  fdi_csr->fdiSMainBoundHi = csr_array[FDI_CSR_SMAIN_BOUND_HI];
+  fdi_csr->fdiUMainBoundLo = csr_array[FDI_CSR_UMAIN_BOUND_LO];
+  fdi_csr->fdiUMainBoundHi = csr_array[FDI_CSR_UMAIN_BOUND_HI];
+  fdi_csr->fdiLibCfg = csr_array[FDI_CSR_LIB_CFG];
+  for (int i = 0; i < FDI_LIB_BOUND_COUNT; i++) {
+    fdi_csr->fdiLibBound[i] = csr_array[FDI_CSR_LIB_BOUND_BASE + i];
+  }
+  fdi_csr->fdiMainCallEntry = csr_array[FDI_CSR_MAIN_CALL_ENTRY];
+  fdi_csr->fdiReturnPC = csr_array[FDI_CSR_RETURN_PC];
+  fdi_csr->fdiActiveZoneReturnPC = csr_array[FDI_CSR_ACTIVE_ZONE_RETURN_PC];
+  fdi_csr->fdiFReason = csr_array[FDI_CSR_FREASON] & FDI_FREASON_MASK;
+  fdi_csr->fdiJumpCfg = csr_array[FDI_CSR_JUMP_CFG];
+  for (int i = 0; i < FDI_JUMP_BOUND_COUNT; i++) {
+    fdi_csr->fdiJumpBound[i] = csr_array[FDI_CSR_JUMP_BOUND_BASE + i];
+  }
+}
+
+static void fdi_csr_to_csr_array(uint64_t *csr_array, const DifftestFDICSRState &fdi_csr) {
+  uint64_t main_cfg = fdi_csr.fdiSMainCfg & FDI_MAIN_CFG_SMAIN_MASK;
+  main_cfg = (main_cfg & ~FDI_MAIN_CFG_UMAIN_MASK) | (fdi_csr.fdiUMainCfg & FDI_MAIN_CFG_UMAIN_MASK);
+
+  csr_array[FDI_CSR_SMAIN_CFG] = (csr_array[FDI_CSR_SMAIN_CFG] & ~FDI_MAIN_CFG_SMAIN_MASK) | main_cfg;
+  csr_array[FDI_CSR_SMAIN_BOUND_LO] = fdi_csr.fdiSMainBoundLo;
+  csr_array[FDI_CSR_SMAIN_BOUND_HI] = fdi_csr.fdiSMainBoundHi;
+  csr_array[FDI_CSR_UMAIN_BOUND_LO] = fdi_csr.fdiUMainBoundLo;
+  csr_array[FDI_CSR_UMAIN_BOUND_HI] = fdi_csr.fdiUMainBoundHi;
+  csr_array[FDI_CSR_LIB_CFG] = fdi_csr.fdiLibCfg;
+  for (int i = 0; i < FDI_LIB_BOUND_COUNT; i++) {
+    csr_array[FDI_CSR_LIB_BOUND_BASE + i] = fdi_csr.fdiLibBound[i];
+  }
+  csr_array[FDI_CSR_MAIN_CALL_ENTRY] = fdi_csr.fdiMainCallEntry;
+  csr_array[FDI_CSR_RETURN_PC] = fdi_csr.fdiReturnPC;
+  csr_array[FDI_CSR_ACTIVE_ZONE_RETURN_PC] = fdi_csr.fdiActiveZoneReturnPC;
+  csr_array[FDI_CSR_FREASON] = fdi_csr.fdiFReason & FDI_FREASON_MASK;
+  csr_array[FDI_CSR_JUMP_CFG] = fdi_csr.fdiJumpCfg;
+  for (int i = 0; i < FDI_JUMP_BOUND_COUNT; i++) {
+    csr_array[FDI_CSR_JUMP_BOUND_BASE + i] = fdi_csr.fdiJumpBound[i];
+  }
+}
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
+
 #define check_and_assert(func)                             \
   do {                                                     \
     if (!func) {                                           \
@@ -153,9 +221,10 @@ void RefProxy::regcpy(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
   memcpy(&hcsr, &dut->hcsr, sizeof(hcsr));
 #endif // CONFIG_DIFFTEST_HCSRSTATE
-#ifdef CONFIG_DIFFTEST_DASICSCSRSTATE
-  memcpy(&dasicscsr, &dut->dasicscsr, sizeof(dasicscsr));
-#endif // CONFIG_DIFFTEST_DASICSCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  memcpy(&fdi_csr, &dut->fdi_csr, sizeof(fdi_csr));
+  sync_fdi_csr_to_ref(fdi_csr);
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
   memcpy(&regs_vec, &dut->regs_vec.value, sizeof(regs_vec));
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
@@ -174,6 +243,10 @@ void RefProxy::regcpy(DiffTestState *dut) {
 int RefProxy::compare(DiffTestState *dut) {
 #define PROXY_COMPARE(field) memcmp(&(dut->field), &(field), sizeof(field))
 
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+  sync_fdi_csr_from_ref();
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
+
   const int results[] = {PROXY_COMPARE(regs_int),
 #ifdef CONFIG_DIFFTEST_ARCHFPREGSTATE
                          PROXY_COMPARE(regs_fp),
@@ -190,12 +263,12 @@ int RefProxy::compare(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
                          PROXY_COMPARE(hcsr),
 #endif // CONFIG_DIFFTEST_HCSRSTATE
-#ifdef CONFIG_DIFFTEST_DASICSCSRSTATE
-                         PROXY_COMPARE(dasicscsr),
-#endif // CONFIG_DIFFTEST_DASICSCSRSTATE
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
                          PROXY_COMPARE(triggercsr),
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+                         PROXY_COMPARE(fdi_csr),
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
                          PROXY_COMPARE(csr)
 
   };
@@ -239,9 +312,6 @@ void RefProxy::display(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
     PROXY_COMPARE_AND_DISPLAY(hcsr, regs_name_hcsr)
 #endif // CONFIG_DIFFTEST_HCSRSTATE
-#ifdef CONFIG_DIFFTEST_DASICSCSRSTATE
-    PROXY_COMPARE_AND_DISPLAY(dasicscsr, regs_name_dasicscsr)
-#endif // CONFIG_DIFFTEST_DASICSCSRSTATE
 #ifdef CONFIG_DIFFTEST_ARCHVECREGSTATE
     PROXY_COMPARE_AND_DISPLAY(regs_vec, regs_name_vec)
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
@@ -254,10 +324,29 @@ void RefProxy::display(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
     PROXY_COMPARE_AND_DISPLAY(triggercsr, regs_name_triggercsr)
 #endif // CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+    sync_fdi_csr_from_ref();
+    PROXY_COMPARE_AND_DISPLAY(fdi_csr, regs_name_fdi_csr)
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
   } else {
     ref_reg_display();
   }
 };
+
+#ifdef CONFIG_DIFFTEST_FDICSRSTATE
+void RefProxy::sync_fdi_csr_from_ref() {
+  uint64_t csr_array[FDI_CSR_ARRAY_SIZE];
+  ref_csrcpy(csr_array, REF_TO_DUT);
+  fdi_csr_from_csr_array(&fdi_csr, csr_array);
+}
+
+void RefProxy::sync_fdi_csr_to_ref(const DifftestFDICSRState &dut_fdi_csr) {
+  uint64_t csr_array[FDI_CSR_ARRAY_SIZE];
+  ref_csrcpy(csr_array, REF_TO_DUT);
+  fdi_csr_to_csr_array(csr_array, dut_fdi_csr);
+  ref_csrcpy(csr_array, DUT_TO_REF);
+}
+#endif // CONFIG_DIFFTEST_FDICSRSTATE
 
 void RefProxy::flash_init(const uint8_t *flash_base, size_t size, const char *flash_bin) {
   if (load_flash_bin_v2) {
