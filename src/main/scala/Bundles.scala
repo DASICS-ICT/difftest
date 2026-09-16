@@ -359,6 +359,9 @@ class RunaheadRedirectEvent extends DifftestBaseBundle with HasValid {
 }
 
 class NonRegInterruptPendingEvent extends DifftestBaseBundle with HasValid {
+  val utimerPending = Bool()
+  val utimerAccess = Bool()
+  val utimerValue = UInt(64.W)
   val platformIRPMeip = Bool()
   val platformIRPMtip = Bool()
   val platformIRPMsip = Bool()

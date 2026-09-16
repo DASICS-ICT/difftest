@@ -656,6 +656,18 @@ int Difftest::do_instr_commit(int i) {
     return 0;
   }
 
+#ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
+  // Timer timebase is asynchronous to retirement. Supply the execution-time
+  // snapshot, then execute and check the CSR instruction normally (including RMW).
+  if ((commit_instr & 0x7f) == 0x73 && ((commit_instr >> 12) & 7) &&
+      (commit_instr >> 20) == 0x045) {
+    if (utimer_observations.empty() || !proxy->sync_utimer(utimer_observations.front())) {
+      Info("UTimer CSR commit has no reference timebase observation\n");
+      return 1;
+    }
+    utimer_observations.pop_front();
+  }
+#endif
   // Default: single step exec
   // when there's a fused instruction, let proxy execute more instructions.
   for (int j = 0; j < dut->commit[i].nFused + 1; j++) {
@@ -1664,6 +1676,9 @@ void Difftest::raise_trap(int trapCode) {
 #ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
 void Difftest::do_non_reg_interrupt_pending() {
   if (dut->non_reg_interrupt_pending.valid) {
+    if (dut->non_reg_interrupt_pending.utimerAccess) {
+      utimer_observations.push_back(dut->non_reg_interrupt_pending.utimerValue);
+    }
     struct NonRegInterruptPending ip;
     ip.platformIRPMeip = dut->non_reg_interrupt_pending.platformIRPMeip;
     ip.platformIRPMtip = dut->non_reg_interrupt_pending.platformIRPMtip;
@@ -1675,6 +1690,7 @@ void Difftest::do_non_reg_interrupt_pending() {
     ip.fromAIAMeip = dut->non_reg_interrupt_pending.fromAIAMeip;
     ip.fromAIASeip = dut->non_reg_interrupt_pending.fromAIASeip;
     ip.localCounterOverflowInterruptReq = dut->non_reg_interrupt_pending.localCounterOverflowInterruptReq;
+    ip.utimerPending = dut->non_reg_interrupt_pending.utimerPending;
 
     proxy->non_reg_interrupt_pending(ip);
     dut->non_reg_interrupt_pending.valid = 0;

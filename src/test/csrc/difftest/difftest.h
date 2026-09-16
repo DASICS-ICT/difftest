@@ -1,3 +1,4 @@
+#include <deque>
 /***************************************************************************************
 * Copyright (c) 2020-2023 Institute of Computing Technology, Chinese Academy of Sciences
 * Copyright (c) 2020-2021 Peng Cheng Laboratory
@@ -473,6 +474,7 @@ protected:
 
   void raise_trap(int trapCode);
 #ifdef CONFIG_DIFFTEST_NONREGINTERRUPTPENDINGEVENT
+  std::deque<uint64_t> utimer_observations;
   void do_non_reg_interrupt_pending();
 #endif
 #ifdef CONFIG_DIFFTEST_MHPMEVENTOVERFLOWEVENT

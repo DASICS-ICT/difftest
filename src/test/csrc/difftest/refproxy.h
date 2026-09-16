@@ -170,6 +170,7 @@ public:
   f(ref_virtual_interrupt_is_hvictl_inject, difftest_virtual_interrupt_is_hvictl_inject, void, bool)        \
   f(ref_interrupt_delegate, difftest_interrupt_delegate, void, void*)                                    \
   f(disambiguation_state, difftest_disambiguation_state, int, )                                             \
+  f(ref_utimer_sync, difftest_utimer_sync, void, uint64_t)                                                 \
   f(ref_non_reg_interrupt_pending, difftest_non_reg_interrupt_pending, void, void*)                         \
   f(raise_mhpmevent_overflow, difftest_raise_mhpmevent_overflow, void, uint64_t)                            \
   f(ref_raise_critical_error, difftest_raise_critical_error, bool)                                          \
@@ -304,6 +305,12 @@ public:
     if (ref_interrupt_delegate) {
       ref_interrupt_delegate(&intrDeleg);
     }
+  }
+
+  inline bool sync_utimer(uint64_t value) {
+    if (!ref_utimer_sync) return false;
+    ref_utimer_sync(value);
+    return true;
   }
 
   inline void non_reg_interrupt_pending(struct NonRegInterruptPending &ip) {
@@ -501,6 +508,7 @@ struct NonRegInterruptPending {
   bool fromAIAMeip;
   bool fromAIASeip;
   bool localCounterOverflowInterruptReq;
+  bool utimerPending;
 };
 
 struct FromAIA {
