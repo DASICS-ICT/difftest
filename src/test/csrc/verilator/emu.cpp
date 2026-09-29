@@ -186,6 +186,14 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
                           &long_index)) != -1) {
     switch (o) {
       case 0:
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+        // These modes restore or modify execution outside the controlled stream.
+        if (long_index == 0 || long_index == 5 || long_index == 6 || long_index == 7 ||
+            long_index == 10 || long_index == 16 || long_index == 19 || long_index == 24) {
+          fprintf(stderr, "UIT06 does not support --%s\n", long_options[long_index].name);
+          exit(EXIT_FAILURE);
+        }
+#endif
         switch (long_index) {
           case 0: args.snapshot_path = optarg; continue;
           case 1: args.enable_waveform = true; continue;
@@ -311,6 +319,20 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
       case 'F': args.flash_bin = optarg; break;
     }
   }
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#if defined(VM_SAVABLE) || defined(ENABLE_RUNHEAD) || defined(CONFIG_NO_DIFFTEST) || defined(BASIC_DIFFTEST_ONLY) || defined(CONFIG_DIFFTEST_SQUASH) || defined(CONFIG_DIFFTEST_REPLAY) || defined(CONFIG_DIFFTEST_BATCH) || defined(CONFIG_DIFFTEST_DELTA)
+  fprintf(stderr, "UIT06 was built with an unsupported execution mode\n");
+  exit(EXIT_FAILURE);
+#else
+  if (!args.enable_diff || args.enable_fork || args.enable_runahead || args.snapshot_path ||
+      args.gcpt_restore || args.image_as_footprints || (args.trace_name && args.trace_is_read) ||
+      !difftest_ref_so) {
+    fprintf(stderr, "UIT06 requires an explicit reference and a fresh ordinary image run\n");
+    exit(EXIT_FAILURE);
+  }
+#endif
+#endif
 
   if (args.image == NULL) {
     Info("Hint: --image=IMAGE_FILE is not specified. Use /dev/zero instead.\n");
@@ -991,7 +1013,14 @@ int Emulator::is_finished() {
 }
 
 int Emulator::is_good() {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  for (int i = 0; i < NUM_CORES; i++) {
+    if (difftest[i]->uit_finalize()) trapCode = STATE_ABORT;
+  }
+  return trapCode == STATE_GOODTRAP;
+#else
   return is_good_trap();
+#endif
 }
 
 inline char *Emulator::timestamp_filename(time_t t, char *buf) {

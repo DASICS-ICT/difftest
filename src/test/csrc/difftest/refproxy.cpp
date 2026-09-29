@@ -21,6 +21,50 @@
 #include <unistd.h>
 #include <vector>
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#include <link.h>
+#include <type_traits>
+
+#if !defined(CONFIG_DIFFTEST_ARCHFPREGSTATE) || !defined(CONFIG_DIFFTEST_HCSRSTATE) || \
+    !defined(CONFIG_DIFFTEST_ARCHVECREGSTATE) || !defined(CONFIG_DIFFTEST_VECCSRSTATE) || \
+    !defined(CONFIG_DIFFTEST_FPCSRSTATE) || !defined(CONFIG_DIFFTEST_TRIGGERCSRSTATE)
+#error "UIT requires the complete RV64/VLEN128 legacy reference register layout"
+#endif
+
+// Marshal a fixed legacy buffer instead of relying on inherited class layout.
+struct UitLegacyRegisters {
+  DifftestArchIntRegState regs_int;
+  DifftestArchFpRegState regs_fp;
+  DifftestCSRState csr;
+  uint64_t pc;
+  DifftestHCSRState hcsr;
+  DifftestArchVecRegState regs_vec;
+  DifftestVecCSRState vcsr;
+  DifftestFpCSRState fcsr;
+  DifftestTriggerCSRState triggercsr;
+};
+
+static_assert(std::is_standard_layout<UitLegacyRegisters>::value, "UIT legacy standard layout");
+static_assert(sizeof(UitLegacyRegisters) == 1400, "UIT legacy transfer size");
+static_assert(offsetof(UitLegacyRegisters, regs_int) == 0, "UIT integer register offset");
+static_assert(offsetof(UitLegacyRegisters, regs_fp) == 256, "UIT floating register offset");
+static_assert(offsetof(UitLegacyRegisters, csr) == 512, "UIT CSR offset");
+static_assert(offsetof(UitLegacyRegisters, pc) == 656, "UIT PC offset");
+static_assert(offsetof(UitLegacyRegisters, hcsr) == 664, "UIT hypervisor CSR offset");
+static_assert(offsetof(UitLegacyRegisters, regs_vec) == 800, "UIT vector register offset");
+static_assert(offsetof(UitLegacyRegisters, vcsr) == 1312, "UIT vector CSR offset");
+static_assert(offsetof(UitLegacyRegisters, fcsr) == 1368, "UIT floating CSR offset");
+static_assert(offsetof(UitLegacyRegisters, triggercsr) == 1376, "UIT trigger CSR offset");
+static_assert(DIFFTEST_VLEN == 128, "UIT requires VLEN128");
+
+static void uit_require_equal(const char *field, uint64_t actual, uint64_t expected) {
+  if (actual != expected) {
+    fprintf(stderr, "UIT ABI mismatch: %s actual=%" PRIu64 " expected=%" PRIu64 "\n", field, actual, expected);
+    exit(EXIT_FAILURE);
+  }
+}
+#endif
+
 uint8_t *ref_golden_mem = NULL;
 const char *difftest_ref_so = NULL;
 
@@ -49,6 +93,10 @@ REF_ALL(DeclExtRefFunc)
   extern RefFunc(ref_func, ret __attribute__((weak)), __VA_ARGS__); \
   }
 REF_OPTIONAL(DeclWeakExtRefFunc)
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+// Give the linked symbol the same two-argument type as the negotiated ABI.
+extern "C" void uit_linked_regcpy(void *, bool) asm("difftest_regcpy");
+#endif
 #endif
 
 AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env, const char *file_path)
@@ -64,6 +112,56 @@ AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env,
   REF_ALL(LoadRefFunc)
   REF_ALL(CheckRefFunc)
   REF_OPTIONAL(LoadRefFunc)
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#define LoadUitFunc(this_func, ref_func, ...)                                    \
+  this_func = GetRefFunc(, ref_func, int32_t, __VA_ARGS__);                      \
+  if (!this_func) {                                                             \
+    fprintf(stderr, "UIT required reference symbol missing: %s\n", #ref_func); \
+    exit(EXIT_FAILURE);                                                         \
+  }
+  LoadUitFunc(uit_query_caps, difftest_uit_query_caps, void *, uint32_t);
+  LoadUitFunc(uit_initialize, difftest_uit_init, const void *, uint32_t);
+  LoadUitFunc(uit_execute, difftest_uit_exec, const void *, uint32_t, void *, uint32_t);
+  LoadUitFunc(uit_raise_event, difftest_uit_raise_event, const void *, uint32_t);
+  LoadUitFunc(uit_get_state, difftest_uit_get_state, void *, uint32_t);
+  LoadUitFunc(uit_read_tx, difftest_uit_read_tx, void *, uint32_t);
+#undef LoadUitFunc
+
+#ifdef LINKED_REFPROXY_LIB
+  uit_ref_regcpy = uit_linked_regcpy;
+#else
+  uit_ref_regcpy = load_function<decltype(uit_ref_regcpy)>("difftest_regcpy");
+#endif
+  if (!uit_ref_regcpy) {
+    fprintf(stderr, "UIT required reference symbol missing: difftest_regcpy\n");
+    exit(EXIT_FAILURE);
+  }
+  const int32_t caps_rc = uit_query_caps(&uit_capabilities, sizeof(uit_capabilities));
+  if (caps_rc != DIFFTEST_UIT_OK) {
+    fprintf(stderr, "UIT capability query failed: rc=%" PRId32 "\n", caps_rc);
+    exit(EXIT_FAILURE);
+  }
+  uit_require_equal("version", uit_capabilities.version, DIFFTEST_UIT_VERSION);
+  uit_require_equal("caps bytes", uit_capabilities.bytes, sizeof(DifftestUitCaps));
+  // The host matches this mode to the observed DUT feature before UIT init.
+  if (uit_capabilities.enabled_features != DIFFTEST_UIT_F_UART_TX) {
+    uit_require_equal("enabled features", uit_capabilities.enabled_features, DIFFTEST_UIT_FEATURES);
+  }
+  uit_require_equal("supported features", uit_capabilities.supported_features, DIFFTEST_UIT_FEATURES);
+  uit_require_equal("XLEN", uit_capabilities.xlen, 64);
+  uit_require_equal("VLEN", uit_capabilities.vlen, 128);
+  uit_require_equal("legacy regcpy bytes", uit_capabilities.legacy_regcpy_bytes, sizeof(UitLegacyRegisters));
+  uit_require_equal("legacy csrcpy bytes", uit_capabilities.legacy_csrcpy_bytes, 4096 * sizeof(uint64_t));
+  uit_require_equal("legacy regcpy arity", uit_capabilities.legacy_regcpy_arity, 2);
+  uit_require_equal("max harts", uit_capabilities.max_harts, 1);
+  uit_require_equal("DUT harts", NUM_CORES, 1);
+  uit_require_equal("hart ID", coreid, 0);
+  uit_require_equal("exec request bytes", uit_capabilities.exec_request_bytes, sizeof(DifftestUitExecRequest));
+  uit_require_equal("event request bytes", uit_capabilities.event_request_bytes, sizeof(DifftestUitHUEvent));
+  uit_require_equal("state bytes", uit_capabilities.state_bytes, sizeof(DifftestUitState));
+  uit_require_equal("exec result bytes", uit_capabilities.exec_result_bytes, sizeof(DifftestUitExecResult));
+#endif
 
   if (NUM_CORES > 1) {
     check_and_assert(ref_set_mhartid);
@@ -97,6 +195,16 @@ AbstractRefProxy::~AbstractRefProxy() {
 void *AbstractRefProxy::load_handler(const char *env, const char *file_path) {
 #ifdef LINKED_REFPROXY_LIB
   Info("The reference model (dynamically or statically linked at compile-time) is %s\n", LINKED_REFPROXY_LIB);
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  Dl_info linked_info{};
+  if (!dladdr(reinterpret_cast<void *>(difftest_init), &linked_info) || !linked_info.dli_fname) {
+    fprintf(stderr, "UIT could not identify the linked reference path\n");
+    exit(EXIT_FAILURE);
+  }
+  char *resolved_linked_path = realpath(linked_info.dli_fname, nullptr);
+  loaded_reference_path = resolved_linked_path ? resolved_linked_path : linked_info.dli_fname;
+  free(resolved_linked_path);
+#endif
   return nullptr;
 #endif
 
@@ -124,6 +232,17 @@ void *AbstractRefProxy::load_handler(const char *env, const char *file_path) {
   void *so_handler = (NUM_CORES > 1) ? dlmopen(LM_ID_NEWLM, difftest_ref_so, mode) : dlopen(difftest_ref_so, mode);
   check_and_assert(so_handler);
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  struct link_map *loaded_map = nullptr;
+  if (dlinfo(so_handler, RTLD_DI_LINKMAP, &loaded_map) != 0 || !loaded_map || !loaded_map->l_name) {
+    fprintf(stderr, "UIT could not identify the loaded reference path\n");
+    exit(EXIT_FAILURE);
+  }
+  char *resolved_path = realpath(loaded_map->l_name, nullptr);
+  loaded_reference_path = resolved_path ? resolved_path : loaded_map->l_name;
+  free(resolved_path);
+#endif
+
   if (!use_given_diff) {
     free((void *)difftest_ref_so);
     difftest_ref_so = nullptr;
@@ -142,6 +261,56 @@ RefProxy::~RefProxy() {
     ref_close();
   }
 }
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+void RefProxy::uit_sync_regs(bool is_from_dut) {
+  if (is_from_dut && uit_initialized) {
+    fprintf(stderr, "UIT runtime register import is forbidden\n");
+    exit(EXIT_FAILURE);
+  }
+  UitLegacyRegisters legacy{};
+  if (is_from_dut) {
+    legacy = {regs_int, regs_fp, csr, pc, hcsr, regs_vec, vcsr, fcsr, triggercsr};
+  }
+  uit_ref_regcpy(&legacy, is_from_dut);
+  if (!is_from_dut) {
+    regs_int = legacy.regs_int;
+    regs_fp = legacy.regs_fp;
+    csr = legacy.csr;
+    pc = legacy.pc;
+    hcsr = legacy.hcsr;
+    regs_vec = legacy.regs_vec;
+    vcsr = legacy.vcsr;
+    fcsr = legacy.fcsr;
+    triggercsr = legacy.triggercsr;
+  }
+}
+
+int32_t RefProxy::uit_init(uint64_t epoch, uint32_t required_features) {
+  const DifftestUitInit init{DIFFTEST_UIT_VERSION, sizeof(DifftestUitInit), 0, required_features, epoch, 0};
+  const int32_t rc = uit_initialize(&init, sizeof(init));
+  if (rc == DIFFTEST_UIT_OK) {
+    uit_initialized = true;
+  }
+  return rc;
+}
+
+int32_t RefProxy::uit_exec(const DifftestUitExecRequest &request, DifftestUitExecResult &result) {
+  return uit_execute(&request, sizeof(request), &result, sizeof(result));
+}
+
+int32_t RefProxy::uit_event(const DifftestUitHUEvent &event) {
+  return uit_raise_event(&event, sizeof(event));
+}
+
+int32_t RefProxy::uit_state(DifftestUitState &out) {
+  return uit_get_state(&out, sizeof(out));
+}
+
+int32_t RefProxy::uit_tx(DifftestUitTx &out) {
+  return uit_read_tx(&out, sizeof(out));
+}
+#endif
 
 void RefProxy::regcpy(DiffTestState *dut) {
   memcpy(&regs_int, dut->regs_int.value, 32 * sizeof(uint64_t));
@@ -165,7 +334,11 @@ void RefProxy::regcpy(DiffTestState *dut) {
 #ifdef CONFIG_DIFFTEST_TRIGGERCSRSTATE
   memcpy(&triggercsr, &dut->triggercsr, sizeof(triggercsr));
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  uit_sync_regs(DUT_TO_REF);
+#else
   ref_regcpy(&regs_int, DUT_TO_REF, false);
+#endif
 };
 
 int RefProxy::compare(DiffTestState *dut) {

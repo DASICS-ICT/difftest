@@ -33,6 +33,15 @@
 
 Difftest **difftest = NULL;
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+// Boot flash retires before controlled-input comparison starts at the RAM image.
+static constexpr uint64_t reference_start_pc = 0x80000000ULL;
+#else
+static constexpr uint64_t reference_start_pc = FIRST_INST_ADDRESS;
+#endif
+
+#include "user_timer_bridge.inc"
+
 int difftest_init() {
 #ifdef CONFIG_DIFFTEST_PERFCNT
   difftest_perfcnt_init();
@@ -61,12 +70,17 @@ int init_nemuproxy(size_t ramsize = 0) {
 
 int difftest_state() {
   for (int i = 0; i < NUM_CORES; i++) {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+    const int status = difftest[i]->uit_status();
+    if (status != STATE_RUNNING) return status;
+#else
     if (difftest[i]->get_trap_valid()) {
       return difftest[i]->get_trap_code();
     }
     if (difftest[i]->proxy && difftest[i]->proxy->get_status()) {
       return difftest[i]->proxy->get_status();
     }
+#endif
   }
   return -1;
 }
@@ -80,6 +94,10 @@ int difftest_nstep(int step, bool enable_diff) {
       if (difftest_step())
         return STATE_ABORT;
     } else {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+      Info("UIT06 requires reference comparison to be enabled.\n");
+      return STATE_ABORT;
+#endif
       difftest_set_dut();
     }
     int status = difftest_state();
@@ -186,6 +204,9 @@ Difftest::Difftest(int coreid) : id(coreid) {
 }
 
 Difftest::~Difftest() {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  if (!uit.finalized) { uit.failed = true; uit.summary(); }
+#endif
   delete state;
   delete difftrace;
   if (proxy) {
@@ -269,6 +290,9 @@ void Difftest::do_replay() {
 #endif // CONFIG_DIFFTEST_REPLAY
 
 int Difftest::step() {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  return uit_step();
+#endif
 #ifdef CONFIG_DIFFTEST_REPLAY
   static int replay_step = 0;
   if (replay_status.in_replay) {
@@ -309,6 +333,11 @@ inline int Difftest::check_all() {
     return 1;
   }
   do_first_instr_commit();
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  if (uit.failed) return 1;
+  uit.frame_store_checks = 0;
+  uit.terminal_frame_uid = 0;
+#endif
 
   // Each cycle is checked for an store event, and recorded in queue.
   // It is checked every time an instruction is committed and queue has content.
@@ -392,6 +421,65 @@ inline int Difftest::check_all() {
 #endif
 
   num_commit = 0; // reset num_commit this cycle to 0
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  const auto frame_csr = dut->csr;
+  const auto frame_hcsr = dut->hcsr;
+  bool applied_event = false;
+  for (int i = 0; i < CONFIG_DIFF_COMMIT_WIDTH; i++) {
+    if (dut->event.valid) {
+      const auto event = uit.events.find(dut->event.eventSeq);
+      if (event == uit.events.end()) return uit.error("event snapshot disappeared");
+      if (event->second.beforeCount < uit.retired) return uit.error("architectural event arrived after its boundary", event->second.uid);
+      if (event->second.beforeCount == uit.retired) {
+        if (uit_event()) return 1;
+        applied_event = true;
+      }
+    }
+    if (!dut->commit[i].valid) continue;
+    const auto &identity = dut->uit_retire[i];
+    const auto &commit = dut->commit[i];
+    if (!identity.valid || identity.epoch != uit.epoch || !identity.uid || identity.robIdx != commit.robIdx || identity.beforeCount != uit.retired || identity.afterCount - identity.beforeCount != uint64_t(commit.nFused) + 1) return uit.error("retirement identity or count mismatch", identity.uid);
+    if (uit.terminal_seen) {
+      if (identity.afterCount > uit.terminal.afterCount) return uit.error("retirement proceeded past the terminal boundary", identity.uid);
+      if (identity.afterCount == uit.terminal.afterCount) {
+        if (identity.uid != uit.terminal.uid || commit.pc != uit.terminal.pc) return uit.error("terminal retirement identity mismatch", identity.uid);
+        int valid_lanes = 0;
+        for (int lane = 0; lane < CONFIG_DIFF_COMMIT_WIDTH; lane++) valid_lanes += dut->commit[lane].valid;
+        if (commit.nFused || valid_lanes != 1 || num_commit) return uit.error("terminal instruction was not an exclusive retirement", identity.uid);
+        uit.terminal_frame_uid = identity.uid;
+      }
+    }
+    const auto access = uit.accesses.find(identity.uid);
+    if (access != uit.accesses.end() && (identity.robIdx != access->second.request.robIdx || identity.robFlag != access->second.request.robFlag)) return uit.error("retired access ROB identity mismatch", identity.uid);
+    const bool inject_gpr = !uit.fault_used && uit.fault_kind == "gpr" && access != uit.accesses.end() &&
+      access->second.request.legal && access->second.request.sampleKind && ((commit.instr >> 7) & 31);
+    if (dut->event.valid) {
+      const auto boundary = uit.events.at(dut->event.eventSeq).beforeCount;
+      if (boundary > identity.beforeCount && boundary < identity.afterCount) return uit.error("architectural event splits a retired instruction group", identity.uid);
+    }
+    proxy->sync();
+    const uint64_t before = proxy->pc;
+    if (before != commit.pc) return uit.error("reference PC differs from retirement boundary", identity.uid);
+    if (do_instr_commit(i)) return 1;
+    if (inject_gpr) {
+      const auto rd = (commit.instr >> 7) & 31;
+      const auto original = dut->regs_int.value[rd];
+      dut->regs_int.value[rd] ^= 1;
+      uit.inject("gpr", identity.uid, original, dut->regs_int.value[rd]);
+    }
+    do_load_check(i);
+    if (do_store_check()) return 1;
+    proxy->sync();
+    uit.prefix("commit");
+    fprintf(uit.trace, ",\"rob\":%u,\"robflag\":%u", identity.robIdx, identity.robFlag);
+    fprintf(uit.trace, ",\"uid\":%lu,\"cycle\":%lu,\"frame_cycle\":%lu,\"pc\":\"0x%lx\",\"ref_pc_before\":\"0x%lx\",\"ref_pc_after\":\"0x%lx\",\"instruction\":\"0x%08x\",\"nFused\":%u,\"before_count\":%lu,\"after_count\":%lu,\"skip\":0,\"dut_skip_hint\":%u,\"comparison_scope\":\"frame\",\"executed\":true}\n", identity.uid, identity.cycle, dut->uit_clock.cycle, commit.pc, before, proxy->pc, commit.instr, commit.nFused, identity.beforeCount, identity.afterCount, commit.skip);
+    if (applied_event) { dut->csr = frame_csr; dut->hcsr = frame_hcsr; }
+    uit.retired = identity.afterCount;
+    num_commit += 1 + commit.nFused;
+    dut->commit[i].valid = 0;
+  }
+  if (dut->event.valid && uit_event()) return 1;
+#else
   if (dut->event.valid) {
     // interrupt has a higher priority than exception
     dut->event.interrupt ? do_interrupt() : do_exception();
@@ -423,6 +511,7 @@ inline int Difftest::check_all() {
       }
     }
   }
+#endif
 
   if (update_delayed_writeback()) {
     return 1;
@@ -442,7 +531,18 @@ inline int Difftest::check_all() {
     return 1;
   }
 
-  if (proxy->compare(dut) || pc_mismatch) {
+  const int architectural_mismatch = proxy->compare(dut);
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  uit.prefix("frame_compare");
+  fprintf(uit.trace, ",\"cycle\":%lu,\"retired_count\":%lu,\"gpr_compared\":true,\"fp_compared\":true,\"vector_compared\":true,\"csr_compared\":true,\"store_checks\":%lu,\"pass\":%s}\n", dut->uit_clock.cycle, uit.retired, uit.frame_store_checks, architectural_mismatch || pc_mismatch ? "false" : "true");
+  if (uit.terminal_frame_uid && !architectural_mismatch && !pc_mismatch) {
+    if (uit.terminal_compared || uit.retired != uit.terminal.afterCount) return uit.error("duplicate or wrong terminal comparison", uit.terminal_frame_uid);
+    uit.terminal_compared = true;
+    uit.prefix("terminal_compare");
+    fprintf(uit.trace, ",\"uid\":%lu,\"frame_cycle\":%lu,\"after_count\":%lu,\"pc\":\"0x%lx\",\"pass\":true}\n", uit.terminal.uid, dut->uit_clock.cycle, uit.retired, uit.terminal.pc);
+  }
+#endif
+  if (architectural_mismatch || pc_mismatch) {
 #ifdef FUZZING
     if (in_disambiguation_state()) {
       Info("Mismatch detected with a disambiguation state at pc = 0x%lx.\n", dut->trap.pc);
@@ -585,12 +685,35 @@ int Difftest::do_instr_commit(int i) {
 
   // MMIO accessing should not be a branch or jump, just +2/+4 to get the next pc
   // to skip the checking of an instruction, just copy the reg state to reference design
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  const auto uid = dut->uit_retire[i].uid;
+  if (dut->commit[i].special & 1) return uit.error("delayed architectural writeback is unsupported", uid);
+  if (UitBridge::controlled(commit_instr)) {
+    if (dut->commit[i].skip || dut->commit[i].nFused) return uit.error("controlled instruction was skipped or fused", uid);
+    return uit_execute(uid, commit_instr, commit_pc, false);
+  }
+  if (dut->commit[i].skip) {
+    // A UART byte store is executed by the reference device model. Its address
+    // and byte are independently checked against actual DUT TX observations.
+    const bool byte_store = (commit_instr & 0x707f) == 0x23;
+    const auto rs1 = (commit_instr >> 15) & 31;
+    const int64_t offset = int64_t(int32_t(((commit_instr >> 25) << 5 | ((commit_instr >> 7) & 31)) << 20)) >> 20;
+    if (!byte_store || dut->commit[i].nFused || proxy->regs_int.value[rs1] + offset != DIFFTEST_UIT_UART_TX) {
+      uit.forbidden_skips++;
+      return uit.error("unknown skipped instruction", uid);
+    }
+  }
+  for (int j = 0; j < dut->commit[i].nFused + 1; j++) { proxy->ref_exec(1); uit.all_instr++; }
+  return 0;
+#else
   if (dut->commit[i].skip || (DEBUG_MODE_SKIP(dut->commit[i].valid, dut->commit[i].pc, dut->commit[i].inst))) {
     // We use the physical register file to get wdata
     proxy->skip_one(dut->commit[i].isRVC, (dut->commit[i].rfwen && dut->commit[i].wdest != 0), dut->commit[i].fpwen,
                     dut->commit[i].vecwen, dut->commit[i].wdest, get_commit_data(i));
     return 0;
   }
+
+#endif
 
   // Default: single step exec
   // when there's a fused instruction, let proxy execute more instructions.
@@ -611,13 +734,13 @@ int Difftest::do_instr_commit(int i) {
 void Difftest::do_first_instr_commit() {
   if (!has_commit && dut->commit[0].valid) {
 #ifndef BASIC_DIFFTEST_ONLY
-    if (dut->commit[0].pc != FIRST_INST_ADDRESS) {
+    if (dut->commit[0].pc != reference_start_pc) {
       return;
     }
 #endif
     Info("The first instruction of core %d has commited. Difftest enabled. \n", id);
     has_commit = 1;
-    nemu_this_pc = FIRST_INST_ADDRESS;
+    nemu_this_pc = reference_start_pc;
 
     proxy->flash_init((const uint8_t *)flash_dev.base, flash_dev.img_size, flash_dev.img_path);
     simMemory->clone_on_demand(
@@ -628,9 +751,28 @@ void Difftest::do_first_instr_commit() {
         true);
     // Use a temp variable to store the current pc of dut
     uint64_t dut_this_pc = dut->commit[0].pc;
-    // NEMU should always start at FIRST_INST_ADDRESS
-    dut->commit[0].pc = FIRST_INST_ADDRESS;
+    // This copy belongs only to initialization at the selected image boundary.
+    dut->commit[0].pc = reference_start_pc;
     proxy->regcpy(dut);
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+    if (!dut->uit_retire[0].valid || dut->uit_retire[0].epoch != uit.epoch || uit.initialized || proxy->uit_init(uit.epoch, dut->uit_clock.enabled ? DIFFTEST_UIT_FEATURES : DIFFTEST_UIT_F_UART_TX) != DIFFTEST_UIT_OK) {
+      uit.error("reference controlled-input initialization failed");
+      return;
+    }
+    uit.retired = dut->uit_retire[0].beforeCount;
+    uit.initial_retired = uit.retired;
+    uit.initialized = true;
+    uit.initial_state_imports++;
+    DifftestUitState initial{};
+    if (proxy->uit_state(initial) != DIFFTEST_UIT_OK || initial.pc != reference_start_pc || initial.ustatus || initial.uie || initial.utvec || initial.uscratch || initial.uepc || initial.ucause || initial.utval || initial.in_handler) {
+      uit.error("reference user state was not reset at initialization");
+      return;
+    }
+    uit.prefix("initialization");
+    fprintf(uit.trace, ",\"pc\":\"0x%lx\",\"retired_base\":%lu,\"imports\":1,\"state\":", initial.pc, uit.initial_retired);
+    uit_log_bank(uit.trace, {initial.ustatus, initial.uie, initial.utvec, initial.uscratch, initial.uepc, initial.ucause, initial.utval, initial.in_handler});
+    fprintf(uit.trace, "}\n");
+#endif
     dut->commit[0].pc = dut_this_pc;
     // Do not reconfig simulator 'proxy->update_config(&nemu_config)' here:
     // If this is main sim thread, simulator has its own initial config
@@ -940,6 +1082,12 @@ int Difftest::do_store_check() {
     }
 
     store_event_queue.pop();
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+    uit.store_checks++;
+    uit.frame_store_checks++;
+    uit.prefix("store_compare");
+    fprintf(uit.trace, ",\"cycle\":%lu,\"dut_address\":\"0x%lx\",\"ref_address\":\"0x%lx\",\"dut_data\":\"0x%lx\",\"ref_data\":\"0x%lx\",\"dut_mask\":%u,\"ref_mask\":%u,\"pass\":true}\n", dut->uit_clock.cycle, store_event.addr, addr, store_event.data, data, store_event.mask, mask);
+#endif
   }
 #endif // CONFIG_DIFFTEST_STOREEVENT
   return 0;
@@ -1503,7 +1651,7 @@ int Difftest::check_timeout() {
   uint64_t cycleCnt = get_trap_event()->cycleCnt;
   // check whether there're any commits since the simulation starts
   if (!has_commit && cycleCnt > last_commit + first_commit_limit) {
-    Info("The first instruction of core %d at 0x%lx does not commit after %lu cycles.\n", id, FIRST_INST_ADDRESS,
+    Info("The first instruction of core %d at 0x%lx does not commit after %lu cycles.\n", id, reference_start_pc,
          first_commit_limit);
     display();
     return 1;
@@ -1522,8 +1670,10 @@ int Difftest::check_timeout() {
         "No instruction of core %d commits for %lu cycles, maybe get stuck\n"
         "(please also check whether a fence.i instruction requires more than %lu cycles to flush the icache)\n",
         id, stuck_commit_limit, stuck_commit_limit);
+#ifndef CONFIG_DIFFTEST_USERTIMERACCESS
     Info("Let REF run one more instruction.\n");
     proxy->ref_exec(1);
+#endif
     display();
     return 1;
   }

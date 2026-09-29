@@ -61,6 +61,112 @@ class ArchEvent extends DifftestBaseBundle with HasValid {
   val virtualInterruptIsHvictlInject = Bool()
   val irToHS = Bool()
   val irToVS = Bool()
+  val irToHU = Bool()
+  val eventSeq = UInt(64.W)
+}
+
+// These fields describe observed state; only time-read samples are reference inputs.
+class UserTimerBank extends Bundle {
+  val ustatus = UInt(64.W)
+  val uie = UInt(64.W)
+  val utvec = UInt(64.W)
+  val uscratch = UInt(64.W)
+  val uepc = UInt(64.W)
+  val ucause = UInt(64.W)
+  val utval = UInt(64.W)
+  val inHandler = UInt(64.W)
+  val mstateen0 = UInt(64.W)
+  val sstateen0 = UInt(64.W)
+  val privilegeMode = UInt(64.W)
+  val virtMode = UInt(64.W)
+  val debugMode = UInt(64.W)
+}
+
+class UserTimerAccess extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val robIdx = UInt(16.W)
+  val robFlag = Bool()
+  val cycle = UInt(64.W)
+  val pc = UInt(64.W)
+  val instr = UInt(32.W)
+  val csr = UInt(16.W)
+  val funct3 = UInt(8.W)
+  val sampleKind = UInt(8.W)
+  val sampleValue = UInt(64.W)
+  val legal = Bool()
+  val needRead = Bool()
+  val isUret = Bool()
+  val pre = new UserTimerBank
+}
+
+class UserTimerResponse extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val cycle = UInt(64.W)
+  val rdata = UInt(64.W)
+  val illegal = Bool()
+  val virtualFault = Bool()
+}
+
+class UserTimerSnapshot extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val robIdx = UInt(16.W)
+  val robFlag = Bool()
+  val cycle = UInt(64.W)
+  val eventSeq = UInt(64.W)
+  val beforeCount = UInt(64.W)
+  val pc = UInt(64.W)
+  val target = UInt(64.W)
+  // 1: CSR, 2: URET, 3: an architectural trap after its effect.
+  val kind = UInt(8.W)
+  val writeSeen = Bool()
+  val writeData = UInt(64.W)
+  val post = new UserTimerBank
+  val csrState = new CSRState
+  val hcsrState = new HCSRState
+}
+
+class UserTimerRetire extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val robIdx = UInt(16.W)
+  val robFlag = Bool()
+  val beforeCount = UInt(64.W)
+  val afterCount = UInt(64.W)
+  val cycle = UInt(64.W)
+}
+
+class UserTimerCancel extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val cycle = UInt(64.W)
+  val reason = UInt(8.W)
+  val hadEffect = Bool()
+}
+
+class UserTimerUart extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val cycle = UInt(64.W)
+  val address = UInt(64.W)
+  val data = UInt(64.W)
+  val length = UInt(8.W)
+}
+
+class UserTimerClock extends DifftestBaseBundle {
+  val epoch = UInt(64.W)
+  val cycle = UInt(64.W)
+  val coreReset = Bool()
+  val enabled = Bool()
+}
+
+class UserTimerTerminal extends DifftestBaseBundle with HasValid {
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val cycle = UInt(64.W)
+  val afterCount = UInt(64.W)
+  val pc = UInt(64.W)
 }
 
 class InstrCommit(val numPhyRegs: Int = 32) extends DifftestBaseBundle with HasValid {

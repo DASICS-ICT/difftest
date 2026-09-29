@@ -22,6 +22,7 @@
 #include "dut.h"
 #include "golden.h"
 #include "refproxy.h"
+#include "user_timer_bridge.h"
 #include <queue>
 #include <unordered_set>
 #include <vector>
@@ -215,6 +216,10 @@ public:
   REF_PROXY *proxy = NULL;
   uint32_t num_commit = 0; // # of commits if made progress
   bool has_commit = false;
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  int uit_finalize();
+  int uit_status();
+#endif
   // Trigger a difftest checking procdure
   int step();
   void update_nemuproxy(int, size_t);
@@ -253,6 +258,10 @@ public:
   // Difftest public APIs for dut: called from DPI-C functions (or testbench)
   // These functions generally do nothing but copy the information to core_state.
   inline DifftestTrapEvent *get_trap_event() {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+    // Terminal reporting uses the source packet retained before transport delay.
+    if (uit.terminal_compared) return &uit.terminal_trap;
+#endif
     return &(dut->trap);
   }
   uint64_t *arch_reg(uint8_t src, bool is_fp = false) {
@@ -354,6 +363,16 @@ protected:
   }
   int check_timeout();
   int check_all();
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  UitBridge uit;
+  int uit_step();
+  int uit_ingest();
+  bool uit_ready(const DiffTestState &frame);
+  int uit_event();
+  int uit_execute(uint64_t uid, uint32_t instruction, uint64_t pc, bool fault);
+  int uit_compare_bank(const std::array<uint64_t, 8> &expected, uint64_t uid, const char *stage, uint64_t event = 0);
+  int uit_check_uart();
+#endif
   void do_first_instr_commit();
   void do_interrupt();
   void do_exception();

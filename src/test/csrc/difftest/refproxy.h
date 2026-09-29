@@ -21,6 +21,11 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#include "difftest-user-timer.h"
+#include <string>
+#endif
+
 /* clang-format off */
 static const char *regs_name_int[] = {
   "$0",  "ra",  "sp",   "gp",   "tp",  "t0",  "t1",   "t2",
@@ -170,10 +175,30 @@ public:
   AbstractRefProxy(int coreid, size_t ram_size, const char *env, const char *file_path);
   ~AbstractRefProxy();
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  const DifftestUitCaps &uit_caps() const { return uit_capabilities; }
+  const std::string &reference_path() const { return loaded_reference_path; }
+#endif
+
 protected:
   REF_OPTIONAL(DeclRefFunc)
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  // The controlled-input reference uses the legacy two-argument transfer ABI.
+  void (*uit_ref_regcpy)(void *, bool);
+  decltype(&difftest_uit_query_caps) uit_query_caps;
+  decltype(&difftest_uit_init) uit_initialize;
+  decltype(&difftest_uit_exec) uit_execute;
+  decltype(&difftest_uit_raise_event) uit_raise_event;
+  decltype(&difftest_uit_get_state) uit_get_state;
+  decltype(&difftest_uit_read_tx) uit_read_tx;
+#endif
+
 private:
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  DifftestUitCaps uit_capabilities{};
+  std::string loaded_reference_path;
+#endif
   void *const handler;
   void *load_handler(const char *env, const char *file_path);
   template <typename T> T load_function(const char *func_name);
@@ -222,8 +247,20 @@ public:
   }
 #endif // CONFIG_DIFFTEST_ARCHVECREGSTATE
   inline void sync(bool is_from_dut = false) {
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+    uit_sync_regs(is_from_dut);
+#else
     ref_regcpy(&regs_int, is_from_dut, is_from_dut);
+#endif
   }
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  int32_t uit_init(uint64_t epoch = 1, uint32_t required_features = DIFFTEST_UIT_FEATURES);
+  int32_t uit_exec(const DifftestUitExecRequest &request, DifftestUitExecResult &result);
+  int32_t uit_event(const DifftestUitHUEvent &event);
+  int32_t uit_state(DifftestUitState &out);
+  int32_t uit_tx(DifftestUitTx &out);
+#endif
 
   void regcpy(DiffTestState *dut);
   int compare(DiffTestState *dut);
@@ -411,6 +448,12 @@ public:
 
 private:
   RefProxyConfig config;
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+  // Runtime transfers may export reference state, but may never replace it.
+  bool uit_initialized = false;
+  void uit_sync_regs(bool is_from_dut);
+#endif
 
   inline void sync_config() {
     update_config(&config);

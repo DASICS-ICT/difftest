@@ -237,6 +237,31 @@ class DiffArchEvent extends ArchEvent with DifftestBundle {
   override val desiredCppName: String = "event"
 }
 
+class DiffUserTimerAccess extends UserTimerAccess with DifftestBundle {
+  override val desiredCppName: String = "uit_access"
+}
+class DiffUserTimerResponse extends UserTimerResponse with DifftestBundle {
+  override val desiredCppName: String = "uit_response"
+}
+class DiffUserTimerSnapshot extends UserTimerSnapshot with DifftestBundle {
+  override val desiredCppName: String = "uit_snapshot"
+}
+class DiffUserTimerRetire extends UserTimerRetire with DifftestBundle with DifftestWithIndex {
+  override val desiredCppName: String = "uit_retire"
+}
+class DiffUserTimerCancel extends UserTimerCancel with DifftestBundle with DifftestWithIndex {
+  override val desiredCppName: String = "uit_cancel"
+}
+class DiffUserTimerUart extends UserTimerUart with DifftestBundle {
+  override val desiredCppName: String = "uit_uart"
+}
+class DiffUserTimerClock extends UserTimerClock with DifftestBundle {
+  override val desiredCppName: String = "uit_clock"
+}
+class DiffUserTimerTerminal extends UserTimerTerminal with DifftestBundle {
+  override val desiredCppName: String = "uit_terminal"
+}
+
 class DiffInstrCommit(nPhyRegs: Int = 32) extends InstrCommit(nPhyRegs) with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "commit"
 
