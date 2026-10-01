@@ -15,14 +15,16 @@
 ***************************************************************************************/
 
 #include "refproxy.h"
+#include "dasics_development_audit.h"
 #include <dlfcn.h>
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
 #include <vector>
 
-#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#if defined(CONFIG_DIFFTEST_USERTIMERACCESS) || defined(DASICS_DEVELOPMENT_AUDIT)
 #include <link.h>
+#include <sys/stat.h>
 #include <type_traits>
 
 #if !defined(CONFIG_DIFFTEST_ARCHFPREGSTATE) || !defined(CONFIG_DIFFTEST_HCSRSTATE) || \
@@ -57,12 +59,15 @@ static_assert(offsetof(UitLegacyRegisters, fcsr) == 1368, "UIT floating CSR offs
 static_assert(offsetof(UitLegacyRegisters, triggercsr) == 1376, "UIT trigger CSR offset");
 static_assert(DIFFTEST_VLEN == 128, "UIT requires VLEN128");
 
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
 static void uit_require_equal(const char *field, uint64_t actual, uint64_t expected) {
   if (actual != expected) {
     fprintf(stderr, "UIT ABI mismatch: %s actual=%" PRIu64 " expected=%" PRIu64 "\n", field, actual, expected);
     exit(EXIT_FAILURE);
   }
 }
+#endif
+
 #endif
 
 uint8_t *ref_golden_mem = NULL;
@@ -112,6 +117,52 @@ AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env,
   REF_ALL(LoadRefFunc)
   REF_ALL(CheckRefFunc)
   REF_OPTIONAL(LoadRefFunc)
+
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  if (!DasicsDevelopment::state().enabled_diff || coreid != 0)
+    DasicsDevelopment::fail("reference loaded outside single-hart difftest mode");
+  development_ref_regcpy = load_function<decltype(development_ref_regcpy)>("difftest_regcpy");
+  auto query = load_function<decltype(&difftest_uit_query_caps)>("difftest_uit_query_caps");
+  if (!development_ref_regcpy || !query) DasicsDevelopment::fail("missing legacy reference capability API");
+  DifftestUitCaps caps{};
+  if (query(&caps, sizeof(caps)) != DIFFTEST_UIT_OK || caps.version != DIFFTEST_UIT_VERSION ||
+      caps.bytes != sizeof(caps) || caps.enabled_features != 0 || caps.xlen != 64 || caps.vlen != 128 ||
+      caps.legacy_regcpy_bytes != sizeof(UitLegacyRegisters) || caps.legacy_csrcpy_bytes != 32768 ||
+      caps.legacy_regcpy_arity != 2 || caps.max_harts != 1 || caps.exec_request_bytes != 64 ||
+      caps.event_request_bytes != 64 || caps.state_bytes != 112 || caps.exec_result_bytes != 64)
+    DasicsDevelopment::fail("legacy reference capability or layout mismatch");
+  struct link_map *loaded = nullptr;
+  if (dlinfo(handler, RTLD_DI_LINKMAP, &loaded) || !loaded || !loaded->l_name)
+    DasicsDevelopment::fail("cannot identify loaded reference");
+  char *loaded_path = realpath(loaded->l_name, nullptr);
+  struct stat loaded_stat{};
+  if (!loaded_path || stat(loaded_path, &loaded_stat) || !S_ISREG(loaded_stat.st_mode))
+    DasicsDevelopment::fail("loaded reference is not a regular file");
+  auto verify_owner = [&](void *function) {
+    Dl_info info{};
+    struct stat symbol_stat{};
+    if (!dladdr(function, &info) || !info.dli_fname || stat(info.dli_fname, &symbol_stat) ||
+        symbol_stat.st_dev != loaded_stat.st_dev || symbol_stat.st_ino != loaded_stat.st_ino)
+      DasicsDevelopment::fail("reference symbol belongs to another loaded object");
+  };
+#define VerifyDevelopmentOwner(this_func, dummy, ret, ...) verify_owner(reinterpret_cast<void *>(this_func));
+  REF_ALL(VerifyDevelopmentOwner)
+#undef VerifyDevelopmentOwner
+  verify_owner(reinterpret_cast<void *>(query));
+  FILE *audit = DasicsDevelopment::event("loaded");
+  fputs(",\"path\":", audit);
+  DasicsDevelopment::string(audit, loaded_path);
+  fputs(",\"symbol_path\":", audit);
+  DasicsDevelopment::string(audit, loaded_path);
+  fprintf(audit, ",\"device\":%" PRIu64 ",\"inode\":%" PRIu64
+          ",\"enabled_features\":%" PRIu64 ",\"supported_features\":%" PRIu64
+          ",\"regcpy_bytes\":1400,\"csrcpy_bytes\":32768,\"regcpy_arity\":2,"
+          "\"xlen\":64,\"vlen\":128,\"max_harts\":1,\"all_required_symbol_owners_verified\":true",
+          static_cast<uint64_t>(loaded_stat.st_dev), static_cast<uint64_t>(loaded_stat.st_ino),
+          caps.enabled_features, caps.supported_features);
+  DasicsDevelopment::flush();
+  free(loaded_path);
+#endif
 
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
 #define LoadUitFunc(this_func, ref_func, ...)                                    \
@@ -208,6 +259,10 @@ void *AbstractRefProxy::load_handler(const char *env, const char *file_path) {
   return nullptr;
 #endif
 
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  if (!difftest_ref_so) DasicsDevelopment::fail("explicit dynamic reference is required");
+#endif
+
   bool use_given_diff = true;
 
   if (difftest_ref_so == NULL) {
@@ -262,17 +317,33 @@ RefProxy::~RefProxy() {
   }
 }
 
+#if defined(CONFIG_DIFFTEST_USERTIMERACCESS) || defined(DASICS_DEVELOPMENT_AUDIT)
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
 void RefProxy::uit_sync_regs(bool is_from_dut) {
+#else
+void RefProxy::development_sync_regs(bool is_from_dut) {
+#endif
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   if (is_from_dut && uit_initialized) {
     fprintf(stderr, "UIT runtime register import is forbidden\n");
     exit(EXIT_FAILURE);
   }
+#endif
   UitLegacyRegisters legacy{};
   if (is_from_dut) {
     legacy = {regs_int, regs_fp, csr, pc, hcsr, regs_vec, vcsr, fcsr, triggercsr};
   }
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   uit_ref_regcpy(&legacy, is_from_dut);
+#else
+  if (is_from_dut) {
+    if (development_imported) DasicsDevelopment::fail("runtime reference register import is forbidden");
+    development_imported = true;
+    fprintf(DasicsDevelopment::event("state_import"), ",\"pc\":\"0x%" PRIx64 "\"", pc);
+    DasicsDevelopment::flush();
+  }
+  development_ref_regcpy(&legacy, is_from_dut);
+#endif
   if (!is_from_dut) {
     regs_int = legacy.regs_int;
     regs_fp = legacy.regs_fp;
@@ -286,6 +357,9 @@ void RefProxy::uit_sync_regs(bool is_from_dut) {
   }
 }
 
+#endif
+
+#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
 int32_t RefProxy::uit_init(uint64_t epoch, uint32_t required_features) {
   const DifftestUitInit init{DIFFTEST_UIT_VERSION, sizeof(DifftestUitInit), 0, required_features, epoch, 0};
   const int32_t rc = uit_initialize(&init, sizeof(init));
@@ -336,6 +410,8 @@ void RefProxy::regcpy(DiffTestState *dut) {
 #endif //CONFIG_DIFFTEST_TRIGGERCSRSTATE
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   uit_sync_regs(DUT_TO_REF);
+#elif defined(DASICS_DEVELOPMENT_AUDIT)
+  development_sync_regs(DUT_TO_REF);
 #else
   ref_regcpy(&regs_int, DUT_TO_REF, false);
 #endif

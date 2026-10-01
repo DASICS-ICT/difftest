@@ -15,6 +15,7 @@
 ***************************************************************************************/
 
 #include "difftest.h"
+#include "dasics_development_audit.h"
 #include "difftrace.h"
 #include "dut.h"
 #include "flash.h"
@@ -74,9 +75,16 @@ int difftest_state() {
     const int status = difftest[i]->uit_status();
     if (status != STATE_RUNNING) return status;
 #else
+#ifdef DASICS_DEVELOPMENT_AUDIT
+    if (DasicsDevelopment::terminal()) {
+      difftest[i]->dut->trap = difftest[i]->development_terminal_trap;
+      return difftest[i]->get_trap_code();
+    }
+#else
     if (difftest[i]->get_trap_valid()) {
       return difftest[i]->get_trap_code();
     }
+#endif
     if (difftest[i]->proxy && difftest[i]->proxy->get_status()) {
       return difftest[i]->proxy->get_status();
     }
@@ -99,6 +107,10 @@ int difftest_nstep(int step, bool enable_diff) {
       return STATE_ABORT;
 #endif
       difftest_set_dut();
+#ifdef DASICS_DEVELOPMENT_AUDIT
+      for (int core = 0; core < NUM_CORES; ++core)
+        DasicsDevelopment::consume_no_diff(difftest[core]->dut);
+#endif
     }
     int status = difftest_state();
     if (status != STATE_RUNNING)
@@ -115,6 +127,31 @@ void difftest_switch_zone() {
 void difftest_set_dut() {
   for (int i = 0; i < NUM_CORES; i++) {
     difftest[i]->dut = diffstate_buffer[i]->next();
+#ifdef DASICS_DEVELOPMENT_AUDIT
+    auto *frame = difftest[i]->dut;
+    DasicsDevelopment::begin_frame(frame->regs_int.value);
+    if (frame->trap.hasTrap) {
+      DasicsDevelopment::latch_trap(frame->trap.pc, frame->trap.code,
+                                    frame->trap.cycleCnt, frame->trap.instrCnt);
+      difftest[i]->development_terminal_trap = frame->trap;
+      frame->trap.hasTrap = false;
+    }
+    for (unsigned slot = 0; slot < CONFIG_DIFF_COMMIT_WIDTH; ++slot) {
+      const auto &commit = frame->commit[slot];
+      if (commit.valid)
+        DasicsDevelopment::retire(slot, commit.pc, commit.instr, commit.skip,
+                                  commit.nFused, frame->regs_int.value);
+    }
+    if (frame->event.valid) {
+      fprintf(DasicsDevelopment::event("architectural_event"),
+              ",\"pc\":\"0x%" PRIx64 "\",\"exception\":%u,\"interrupt\":%u",
+              static_cast<uint64_t>(frame->event.exceptionPC),
+              static_cast<unsigned>(frame->event.exception), static_cast<unsigned>(frame->event.interrupt));
+      DasicsDevelopment::flush();
+      if (DasicsDevelopment::state().trap_pending)
+        DasicsDevelopment::fail("architectural event while awaiting terminal retirement");
+    }
+#endif
   }
 }
 int difftest_step() {
@@ -144,6 +181,9 @@ void difftest_trace_write(int step) {
 }
 
 void difftest_finish() {
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  DasicsDevelopment::finish();
+#endif
 #ifdef CONFIG_DIFFTEST_PERFCNT
   uint64_t cycleCnt = difftest[0]->get_trap_event()->cycleCnt;
   difftest_perfcnt_finish(cycleCnt);
@@ -532,6 +572,13 @@ inline int Difftest::check_all() {
   }
 
   const int architectural_mismatch = proxy->compare(dut);
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  DasicsDevelopment::comparison(dut->commit[0].pc, dut_commit_first_pc, ref_commit_first_pc,
+                                pc_mismatch, !architectural_mismatch && !pc_mismatch,
+                                DasicsDevelopment::state().raw_gpr, proxy->regs_int.value,
+                                memcmp(DasicsDevelopment::state().raw_gpr, dut->regs_int.value,
+                                       sizeof(DasicsDevelopment::state().raw_gpr)) != 0);
+#endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   uit.prefix("frame_compare");
   fprintf(uit.trace, ",\"cycle\":%lu,\"retired_count\":%lu,\"gpr_compared\":true,\"fp_compared\":true,\"vector_compared\":true,\"csr_compared\":true,\"store_checks\":%lu,\"pass\":%s}\n", dut->uit_clock.cycle, uit.retired, uit.frame_store_checks, architectural_mismatch || pc_mismatch ? "false" : "true");
@@ -719,6 +766,9 @@ int Difftest::do_instr_commit(int i) {
   // when there's a fused instruction, let proxy execute more instructions.
   for (int j = 0; j < dut->commit[i].nFused + 1; j++) {
     proxy->ref_exec(1);
+#ifdef DASICS_DEVELOPMENT_AUDIT
+    DasicsDevelopment::ref_exec(i, commit_pc, commit_instr, dut->commit[i].nFused, j);
+#endif
 #ifdef CONFIG_DIFFTEST_SQUASH
     commit_stamp = (commit_stamp + 1) % CONFIG_DIFFTEST_SQUASH_STAMPSIZE;
     do_load_check(i);
@@ -754,6 +804,10 @@ void Difftest::do_first_instr_commit() {
     // This copy belongs only to initialization at the selected image boundary.
     dut->commit[0].pc = reference_start_pc;
     proxy->regcpy(dut);
+#ifdef DASICS_DEVELOPMENT_AUDIT
+    fprintf(DasicsDevelopment::event("startup_sync"), ",\"pc\":\"0x%" PRIx64 "\"", reference_start_pc);
+    DasicsDevelopment::flush();
+#endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
     if (!dut->uit_retire[0].valid || dut->uit_retire[0].epoch != uit.epoch || uit.initialized || proxy->uit_init(uit.epoch, dut->uit_clock.enabled ? DIFFTEST_UIT_FEATURES : DIFFTEST_UIT_F_UART_TX) != DIFFTEST_UIT_OK) {
       uit.error("reference controlled-input initialization failed");

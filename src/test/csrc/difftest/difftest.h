@@ -216,6 +216,10 @@ public:
   REF_PROXY *proxy = NULL;
   uint32_t num_commit = 0; // # of commits if made progress
   bool has_commit = false;
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  // Preserve the undelayed trap packet for reporting after delayed retirement.
+  DifftestTrapEvent development_terminal_trap{};
+#endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   int uit_finalize();
   int uit_status();

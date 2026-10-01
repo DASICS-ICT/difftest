@@ -86,6 +86,12 @@ WITH_CONSTANTIN = 0
 endif
 
 DIFFTEST_CXXFILES = $(shell find $(DIFFTEST_CSRC_DIR) -name "*.cpp")
+ifeq ($(DASICS_DEVELOPMENT_AUDIT),1)
+ifeq ($(NO_DIFF),1)
+$(error Development audit requires ordinary DiffTest observations; use runtime --no-diff)
+endif
+SIM_CXXFLAGS += -DDASICS_DEVELOPMENT_AUDIT
+endif
 ifeq ($(NO_DIFF), 1)
 SIM_CXXFLAGS += -DCONFIG_NO_DIFFTEST
 else

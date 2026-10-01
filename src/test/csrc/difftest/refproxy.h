@@ -21,7 +21,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
-#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#if defined(CONFIG_DIFFTEST_USERTIMERACCESS) || defined(DASICS_DEVELOPMENT_AUDIT)
 #include "difftest-user-timer.h"
 #include <string>
 #endif
@@ -183,6 +183,10 @@ public:
 protected:
   REF_OPTIONAL(DeclRefFunc)
 
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  void (*development_ref_regcpy)(void *, bool);
+#endif
+
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   // The controlled-input reference uses the legacy two-argument transfer ABI.
   void (*uit_ref_regcpy)(void *, bool);
@@ -249,6 +253,8 @@ public:
   inline void sync(bool is_from_dut = false) {
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
     uit_sync_regs(is_from_dut);
+#elif defined(DASICS_DEVELOPMENT_AUDIT)
+    development_sync_regs(is_from_dut);
 #else
     ref_regcpy(&regs_int, is_from_dut, is_from_dut);
 #endif
@@ -448,6 +454,13 @@ public:
 
 private:
   RefProxyConfig config;
+
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  // The negotiated legacy ABI does not include inherited C++ object metadata.
+  void development_sync_regs(bool is_from_dut);
+  // Deterministic smoke allows one boot synchronization, never runtime repair.
+  bool development_imported = false;
+#endif
 
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   // Runtime transfers may export reference state, but may never replace it.

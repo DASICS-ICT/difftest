@@ -27,6 +27,7 @@
 #include <sys/resource.h>
 #ifndef CONFIG_NO_DIFFTEST
 #include "difftest.h"
+#include "dasics_development_audit.h"
 #include "goldenmem.h"
 #include "refproxy.h"
 #endif // CONFIG_NO_DIFFTEST
@@ -383,6 +384,13 @@ Emulator::Emulator(int argc, const char *argv[])
 #endif // VERILATOR
 
   args = parse_args(argc, argv);
+#ifdef DASICS_DEVELOPMENT_AUDIT
+  if (args.enable_fork || args.enable_runahead || args.snapshot_path || args.gcpt_restore ||
+      args.image_as_footprints || args.trace_name || !args.image ||
+      (args.enable_diff && !difftest_ref_so) || (!args.enable_diff && difftest_ref_so))
+    DasicsDevelopment::fail("fresh image and explicit comparison mode are required");
+  DasicsDevelopment::initialize(args.enable_diff);
+#endif
 #ifdef ENABLE_CONSTANTIN
   void constantinLoad();
   constantinLoad();
