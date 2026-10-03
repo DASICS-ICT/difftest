@@ -237,6 +237,10 @@ class DiffArchEvent extends ArchEvent with DifftestBundle {
   override val desiredCppName: String = "event"
 }
 
+class DiffFDIObservation extends FDIObservation with DifftestBundle with DifftestWithIndex {
+  override val desiredCppName: String = "fdi_observation"
+}
+
 class DiffUserTimerAccess extends UserTimerAccess with DifftestBundle {
   override val desiredCppName: String = "uit_access"
 }

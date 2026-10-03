@@ -21,6 +21,13 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+#include "fdi_bridge.h"
+#ifndef CONFIG_DIFFTEST_USERTIMERACCESS
+#error "FDI observation requires the verified retirement identity transport"
+#endif
+#endif
+
 #if defined(CONFIG_DIFFTEST_USERTIMERACCESS) || defined(DASICS_DEVELOPMENT_AUDIT)
 #include "difftest-user-timer.h"
 #include <string>
@@ -174,6 +181,10 @@ public:
 
   AbstractRefProxy(int coreid, size_t ram_size, const char *env, const char *file_path);
   ~AbstractRefProxy();
+
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  FdiReference fdi;
+#endif
 
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   const DifftestUitCaps &uit_caps() const { return uit_capabilities; }

@@ -118,6 +118,21 @@ AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env,
   REF_ALL(CheckRefFunc)
   REF_OPTIONAL(LoadRefFunc)
 
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+#if defined(CONFIG_DIFFTEST_SQUASH) || defined(CONFIG_DIFFTEST_REPLAY) || defined(CONFIG_DIFFTEST_BATCH) || \
+    defined(CONFIG_DIFFTEST_DELTA) || defined(ENABLE_RUNHEAD) || defined(BASIC_DIFFTEST_ONLY) || \
+    defined(VM_SAVABLE) || defined(DEBUG_MODE_DIFF) || defined(CONFIG_NO_DIFFTEST)
+  fprintf(stderr, "FDI requires a single-hart cold-start comparison without restore or execution compression\n");
+  exit(EXIT_FAILURE);
+#endif
+  FdiReferenceApi fdi_api;
+  fdi_api.query = GetRefFunc(, difftest_fdi_query_caps, int32_t, void *, uint32_t);
+  fdi_api.capture = GetRefFunc(, difftest_fdi_capture_reset, int32_t, uint32_t, void *, uint32_t);
+  fdi_api.initialize = GetRefFunc(, difftest_fdi_init, int32_t, const void *, uint32_t);
+  fdi_api.state = GetRefFunc(, difftest_fdi_get_state, int32_t, uint32_t, void *, uint32_t);
+  if (fdi.connect(fdi_api, coreid, NUM_CORES)) exit(EXIT_FAILURE);
+#endif
+
 #ifdef DASICS_DEVELOPMENT_AUDIT
   if (!DasicsDevelopment::state().enabled_diff || coreid != 0)
     DasicsDevelopment::fail("reference loaded outside single-hart difftest mode");
@@ -235,6 +250,9 @@ AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env,
 #endif // ENABLE_STORE_LOG
 
   ref_init();
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi.capture_reset()) exit(EXIT_FAILURE);
+#endif
 }
 
 AbstractRefProxy::~AbstractRefProxy() {
@@ -322,6 +340,9 @@ RefProxy::~RefProxy() {
 void RefProxy::uit_sync_regs(bool is_from_dut) {
 #else
 void RefProxy::development_sync_regs(bool is_from_dut) {
+#endif
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (is_from_dut && fdi.startup_import()) exit(EXIT_FAILURE);
 #endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   if (is_from_dut && uit_initialized) {

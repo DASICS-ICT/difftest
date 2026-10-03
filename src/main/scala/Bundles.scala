@@ -82,6 +82,29 @@ class UserTimerBank extends Bundle {
   val debugMode = UInt(64.W)
 }
 
+// Independent read-only FDI observations; no fields are added to the UIT wire.
+class FDIObservation extends DifftestBaseBundle with HasValid {
+  val kind = UInt(8.W)
+  val epoch = UInt(64.W)
+  val uid = UInt(64.W)
+  val cycle = UInt(64.W)
+  val pc = UInt(64.W)
+  val eventSeq = UInt(64.W)
+  val beforeCount = UInt(64.W)
+  val robIdx = UInt(16.W)
+  val robFlag = Bool()
+  val instruction = UInt(32.W)
+  val csrAddress = UInt(16.W)
+  val readNeeded = Bool()
+  val writeNeeded = Bool()
+  val permitted = Bool()
+  val actualWrite = Bool()
+  val responseIllegal = Bool()
+  val responseVirtual = Bool()
+  val cancelReason = UInt(8.W)
+  val words = Vec(52, UInt(64.W))
+}
+
 class UserTimerAccess extends DifftestBaseBundle with HasValid {
   val epoch = UInt(64.W)
   val uid = UInt(64.W)

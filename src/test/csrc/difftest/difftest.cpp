@@ -41,6 +41,7 @@ static constexpr uint64_t reference_start_pc = 0x80000000ULL;
 static constexpr uint64_t reference_start_pc = FIRST_INST_ADDRESS;
 #endif
 
+#include "fdi_bridge.inc"
 #include "user_timer_bridge.inc"
 
 int difftest_init() {
@@ -244,6 +245,12 @@ Difftest::Difftest(int coreid) : id(coreid) {
 }
 
 Difftest::~Difftest() {
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi_trace) {
+    if (!fdi_finalized) fprintf(fdi_trace, "{\"type\":\"summary\",\"status\":\"FAIL\",\"reason\":\"comparison did not finalize\"}\n");
+    fclose(fdi_trace);
+  }
+#endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   if (!uit.finalized) { uit.failed = true; uit.summary(); }
 #endif
@@ -500,7 +507,13 @@ inline int Difftest::check_all() {
     proxy->sync();
     const uint64_t before = proxy->pc;
     if (before != commit.pc) return uit.error("reference PC differs from retirement boundary", identity.uid);
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    if (fdi_before_retire(i)) return 1;
+#endif
     if (do_instr_commit(i)) return 1;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    if (fdi_after_boundary()) return 1;
+#endif
     if (inject_gpr) {
       const auto rd = (commit.instr >> 7) & 31;
       const auto original = dut->regs_int.value[rd];
@@ -803,7 +816,21 @@ void Difftest::do_first_instr_commit() {
     uint64_t dut_this_pc = dut->commit[0].pc;
     // This copy belongs only to initialization at the selected image boundary.
     dut->commit[0].pc = reference_start_pc;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    // The reset evidence was captured before imports on both sides. Ordinary
+    // startup synchronization does not contain or repair any FDI state.
+    if (!fdi.has_reset() || fdi.epoch() != uit.epoch ||
+        proxy->fdi.verify_dut_reset(fdi.natural_reset(), fdi.epoch())) {
+      uit.error("FDI reset evidence is missing or invalid before startup import");
+      return;
+    }
+#endif
     proxy->regcpy(dut);
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    if (proxy->fdi.initialize()) { uit.error("FDI initialization failed after startup import"); return; }
+    fprintf(fdi_trace, "{\"type\":\"initialization\",\"epoch\":%lu,\"reference_reset_pc\":\"0x%lx\",\"initial_state_imports\":1}\n",
+            fdi.epoch(), proxy->fdi.natural_reset_pc());
+#endif
 #ifdef DASICS_DEVELOPMENT_AUDIT
     fprintf(DasicsDevelopment::event("startup_sync"), ",\"pc\":\"0x%" PRIx64 "\"", reference_start_pc);
     DasicsDevelopment::flush();

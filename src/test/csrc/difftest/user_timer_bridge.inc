@@ -17,6 +17,9 @@ static void uit_clear_captured_valid(DiffTestState &state) {
   UIT_CLEAR_ONE(uit_access); UIT_CLEAR_ONE(uit_response); UIT_CLEAR_ONE(uit_snapshot);
   UIT_CLEAR_ARRAY(uit_cancel); UIT_CLEAR_ONE(uit_uart); UIT_CLEAR_ONE(uit_terminal);
   UIT_CLEAR_ARRAY(uit_retire);
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  UIT_CLEAR_ARRAY(fdi_observation);
+#endif
   UIT_CLEAR_ONE(event); UIT_CLEAR_ARRAY(commit);
   state.trap.hasTrap = false;
 #ifdef CONFIG_DIFFTEST_ATOMICEVENT
@@ -84,6 +87,9 @@ int Difftest::uit_ingest() {
     return 0;
   }
   uit.released = true;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi_ingest()) return 1;
+#endif
   if (proxy->uit_caps().enabled_features != (clock.enabled ? DIFFTEST_UIT_FEATURES : DIFFTEST_UIT_F_UART_TX)) return uit.error("DUT and reference feature configuration mismatch");
   if (clock.epoch != uit.epoch) return uit.error("observation epoch mismatch");
   if (dut->trap.hasTrap && !uit.raw_terminal_seen) {
@@ -175,6 +181,9 @@ int Difftest::uit_ingest() {
 bool Difftest::uit_ready(const DiffTestState &frame) {
   for (int i = 0; i < CONFIG_DIFF_COMMIT_WIDTH; i++) {
     if (!frame.commit[i].valid) continue;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    if (!fdi.ready(frame.uit_retire[i].uid, frame.commit[i].instr)) return false;
+#endif
     if (UitBridge::controlled(frame.commit[i].instr)) {
       auto found = uit.accesses.find(frame.uit_retire[i].uid);
       if (found == uit.accesses.end() || !found->second.responded || !found->second.captured) return false;
@@ -183,6 +192,10 @@ bool Difftest::uit_ready(const DiffTestState &frame) {
   if (frame.event.valid) {
     auto found = uit.events.find(frame.event.eventSeq);
     if (found == uit.events.end()) return false;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+    if (!fdi.event_ready(frame.event.eventSeq, found->second.uid, frame.event.exceptionInst,
+                         bool(frame.event.interrupt))) return false;
+#endif
     const bool disabled_uret_decode = !frame.uit_clock.enabled && frame.event.exceptionInst == 0x00200073 && frame.event.exception == 2 && !frame.event.interrupt && !uit.accesses.count(found->second.uid);
     if (UitBridge::controlled(frame.event.exceptionInst) && !disabled_uret_decode) {
       auto access = uit.accesses.find(found->second.uid);
@@ -306,6 +319,9 @@ int Difftest::uit_event() {
   }
   if (proxy->pc != event.pc) return uit.error("reference PC differs from event boundary", event.uid);
   const uint64_t pc_before = proxy->pc;
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi_before_event(event)) return 1;
+#endif
   const bool decode_fault = !dut->uit_clock.enabled && !dut->event.interrupt && dut->event.exceptionInst == 0x00200073 && dut->event.exception == 2 && !uit.accesses.count(event.uid);
   if (dut->event.irToHU) {
     if (dut->event.interrupt != 4 || dut->event.exception || dut->event.hasNMI || dut->event.irToHS || dut->event.irToVS || dut->event.virtualInterruptIsHvictlInject) return uit.error("invalid HU event type", event.uid);
@@ -328,6 +344,9 @@ int Difftest::uit_event() {
     do_exception();
   }
   proxy->sync();
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi_after_boundary()) return 1;
+#endif
   if (dut->event.irToHU && !uit.fault_used && uit.fault_kind == "hu_target") {
     const auto original = event.target;
     event.target ^= 2;
@@ -384,6 +403,9 @@ int Difftest::uit_finalize() {
   if (!uit.initialized || !uit.frames.empty() || !uit.accesses.empty() || !uit.events.empty() || !uit.uart.empty() || uit.all_instr != uit.retired - uit.initial_retired) uit.error("unclosed transactions or retirement mismatch at termination");
   DifftestUitTx tx{};
   if (uit.initialized && proxy->uit_tx(tx) != DIFFTEST_UIT_EMPTY) uit.error("unmatched reference UART output at termination");
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  if (fdi_finalize()) uit.failed = true;
+#endif
   uit.summary();
   return uit.failed;
 }

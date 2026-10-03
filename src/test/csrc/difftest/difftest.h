@@ -367,6 +367,16 @@ protected:
   }
   int check_timeout();
   int check_all();
+#ifdef CONFIG_DIFFTEST_FDIOBSERVATION
+  FdiLedger fdi;
+  FILE *fdi_trace = nullptr;
+  bool fdi_finalized = false;
+  int fdi_ingest();
+  int fdi_before_retire(int index);
+  int fdi_before_event(const DifftestUserTimerSnapshot &event);
+  int fdi_after_boundary();
+  int fdi_finalize();
+#endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
   UitBridge uit;
   int uit_step();
