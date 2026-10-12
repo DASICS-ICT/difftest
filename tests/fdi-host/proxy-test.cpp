@@ -1,11 +1,15 @@
 #define main unused_uit_proxy_main
 #include "../user-timer-proxy/proxy-test.cpp"
 #undef main
+#include "dasics_scalar_audit.h"
 
 int main(int argc, char **argv) {
   require(argc == 3, "reference path and test");
   difftest_ref_so = argv[1];
   const std::string test = argv[2];
+#ifdef DASICS_SCALAR_COMPARE
+  DasicsScalarAudit::initialize(true);
+#endif
   NemuProxy proxy(0, 0);
   if (test == "constructor") return 0;
   DiffTestState dut{};
@@ -23,6 +27,17 @@ int main(int argc, char **argv) {
   require(!proxy.fdi.read(after) && !memcmp(&before, &after, sizeof(before)), "ordinary export preserves FDI");
   require(proxy.get_reg_size() == 1400 && proxy.uit_caps().legacy_csrcpy_bytes == 32768,
           "ordinary transfer layout unchanged");
+#ifdef DASICS_SCALAR_COMPARE
+  if (test == "strict_csr") {
+    reference_snapshot(proxy, dut);
+    proxy.csr.mtvec = UINT64_C(0x80000002);
+    dut.csr.mtvec = UINT64_C(0x80000000);
+    require(proxy.compare(&dut) != 0 && proxy.csr.mtvec == UINT64_C(0x80000002),
+            "CSR mismatch cannot waive, mutate, or import the reference");
+  }
+  require(DasicsScalarAudit::state().reference_loaded, "real dynamic reference identity recorded");
+  DasicsScalarAudit::finish();
+#endif
   puts("FDI_PROXY_UNIT_PASS: production proxy with fake reference");
   return 0;
 }

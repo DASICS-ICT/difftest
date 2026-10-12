@@ -33,6 +33,13 @@ def main():
     ledger += ["duplicate_event_uid", "trap_before_acceptance"]
     ledger += ["canceled_pre_pollution", "same_cycle_pre_post", "same_cycle_lane_disagreement", "interrupt_wrong_cancel_reason"]
 
+    ledger += ["call_" + case for case in (
+        "j jr jr_rd_zero missing_pre orphan_post bad_encoding csr_as_call call_as_csr bad_read bad_write bad_address "
+        "duplicate_pre missing_post discard wrong_uid wrong_rob wrong_pc wrong_kind late_post missing_effect "
+        "wrong_link truncated_link unrelated_word illegal_changed wrong_response duplicate_post cancel_after_write "
+        "illegal_retired illegal_missing_cancel wrong_cancel_reason illegal saved_snapshots unchanged_link reference_mismatch"
+    ).split()]
+
     def run(case):
         result = subprocess.run([str(output / "bridge-test"), case], capture_output=True, text=True, timeout=10)
         (output / (case + ".stdout")).write_text(result.stdout)
@@ -42,8 +49,21 @@ def main():
     if build.returncode == 0:
         with ThreadPoolExecutor(max_workers=8) as pool:
             report["cases"] = list(pool.map(run, ["api_" + case for case in api] + ledger))
+    event_command = [args.cxx, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
+                     "-I", str(root / "src/test/csrc/difftest"), str(source / "scalar-event-test.cpp"),
+                     "-o", str(output / "scalar-event-test")]
+    event_build = subprocess.run(event_command, capture_output=True, text=True, timeout=60)
+    (output / "scalar-event.build.stdout").write_text(event_build.stdout)
+    (output / "scalar-event.build.stderr").write_text(event_build.stderr)
+    report["event_build"] = {"command": event_command, "exit_code": event_build.returncode}
+    if event_build.returncode == 0:
+        event_test = subprocess.run([str(output / "scalar-event-test")], capture_output=True, text=True, timeout=10)
+        (output / "scalar-event.stdout").write_text(event_test.stdout)
+        (output / "scalar-event.stderr").write_text(event_test.stderr)
+        report["cases"].append({"name": "strict_event_snapshot", "exit_code": event_test.returncode,
+                                "passed": event_test.returncode == 0, "checks": 12})
     report["passed"] = sum(case["passed"] for case in report["cases"])
-    report["total"] = len(api) + len(ledger)
+    report["total"] = len(api) + len(ledger) + 1
     report["status"] = "PASS" if report["passed"] == report["total"] else "FAIL"
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"FDI host fake unit {report['status']}: {report['passed']}/{report['total']}; {output}")

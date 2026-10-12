@@ -16,6 +16,7 @@
 
 #include "difftest.h"
 #include "dasics_development_audit.h"
+#include "dasics_scalar_audit.h"
 #include "difftrace.h"
 #include "dut.h"
 #include "flash.h"
@@ -71,6 +72,14 @@ int init_nemuproxy(size_t ramsize = 0) {
 }
 
 int difftest_state() {
+#ifdef DASICS_SCALAR_COMPARE
+  if (!DasicsScalarAudit::state().enabled_diff) {
+    const auto &audit = DasicsScalarAudit::state();
+    if (!audit.terminal_seen) return STATE_RUNNING;
+    const uint64_t code = audit.terminal_code;
+    return code > STATE_FUZZ_COND && code < STATE_RUNNING ? STATE_BADTRAP : code;
+  }
+#endif
   for (int i = 0; i < NUM_CORES; i++) {
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
     const int status = difftest[i]->uit_status();
@@ -103,11 +112,17 @@ int difftest_nstep(int step, bool enable_diff) {
       if (difftest_step())
         return STATE_ABORT;
     } else {
-#ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#if defined(CONFIG_DIFFTEST_USERTIMERACCESS) && !defined(DASICS_SCALAR_COMPARE)
       Info("UIT06 requires reference comparison to be enabled.\n");
       return STATE_ABORT;
 #endif
       difftest_set_dut();
+#ifdef DASICS_SCALAR_COMPARE
+      // Acknowledge the same raw packets as the comparison consumer without
+      // initializing, importing into, or executing a reference model.
+      for (int core = 0; core < NUM_CORES; ++core)
+        uit_clear_captured_valid(*difftest[core]->dut);
+#endif
 #ifdef DASICS_DEVELOPMENT_AUDIT
       for (int core = 0; core < NUM_CORES; ++core)
         DasicsDevelopment::consume_no_diff(difftest[core]->dut);
@@ -128,6 +143,9 @@ void difftest_switch_zone() {
 void difftest_set_dut() {
   for (int i = 0; i < NUM_CORES; i++) {
     difftest[i]->dut = diffstate_buffer[i]->next();
+#ifdef DASICS_SCALAR_COMPARE
+    DasicsScalarAudit::observe(*difftest[i]->dut);
+#endif
 #ifdef DASICS_DEVELOPMENT_AUDIT
     auto *frame = difftest[i]->dut;
     DasicsDevelopment::begin_frame(frame->regs_int.value);
@@ -182,6 +200,9 @@ void difftest_trace_write(int step) {
 }
 
 void difftest_finish() {
+#ifdef DASICS_SCALAR_COMPARE
+  DasicsScalarAudit::finish();
+#endif
 #ifdef DASICS_DEVELOPMENT_AUDIT
   DasicsDevelopment::finish();
 #endif
@@ -252,7 +273,12 @@ Difftest::~Difftest() {
   }
 #endif
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#ifdef DASICS_SCALAR_COMPARE
+  // No-reference scalar runs never start a UIT comparison session.
+  if (proxy && !uit.finalized) { uit.failed = true; uit.summary(); }
+#else
   if (!uit.finalized) { uit.failed = true; uit.summary(); }
+#endif
 #endif
   delete state;
   delete difftrace;
@@ -637,6 +663,11 @@ void Difftest::do_interrupt() {
 
 void Difftest::do_exception() {
   state->record_exception(dut->event.exceptionPC, dut->event.exceptionInst, dut->event.exception);
+#ifdef DASICS_SCALAR_COMPARE
+  // Re-execute the faulting instruction from the reference's own state. DUT
+  // cause and trap values are observations, never inputs to this execution.
+  proxy->ref_exec(1);
+#else
   if (dut->event.exception == 12 || dut->event.exception == 13 || dut->event.exception == 15 ||
       dut->event.exception == 20 || dut->event.exception == 21 || dut->event.exception == 23) {
     struct ExecutionGuide guide;
@@ -659,6 +690,7 @@ void Difftest::do_exception() {
 #endif
     proxy->ref_exec(1);
   }
+#endif
 
 #ifdef FUZZING
   static uint64_t lastExceptionPC = 0xdeadbeafUL;

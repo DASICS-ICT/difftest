@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--generated-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--cxx", default="g++")
+    parser.add_argument("--scalar-compare", action="store_true")
     args = parser.parse_args()
     source = Path(__file__).resolve().parent
     root = source.parents[1]
@@ -69,6 +70,8 @@ def main():
     original = args.generated_dir.resolve() / "diffstate.h"
     make_fixture(root, original, fixture / "diffstate.h")
     flags = [args.cxx, "-std=c++17", "-O1", "-g", "-Werror", "-DREF_PROXY=NemuProxy"]
+    if args.scalar_compare:
+        flags += ["-DDASICS_SCALAR_COMPARE", "-DCPU_ROCKET_CHIP"]
     for directory in (fixture, root / "config", root / "src/test/csrc/common",
                       root / "src/test/csrc/difftest", root / "src/test/csrc/plugin/spikedasm"):
         flags += ["-I", str(directory)]
@@ -97,6 +100,9 @@ def main():
         command = [str(output / "proxy"), str(output / library), test]
         env = {key: value for key, value in os.environ.items() if not key.startswith(("FAKE_FDI_", "FAKE_UIT_"))}
         env.update(overrides or {})
+        if args.scalar_compare:
+            env.update(DASICS_DEVELOPMENT_TRACE=str(output / (name + ".audit.jsonl")),
+                       DASICS_DEVELOPMENT_RUN_ID=name)
         result = subprocess.run(command, capture_output=True, text=True, timeout=10, env=env)
         (output / (name + ".stdout")).write_text(result.stdout)
         (output / (name + ".stderr")).write_text(result.stderr)
@@ -113,10 +119,14 @@ def main():
             case("missing_" + missing, library="missing-" + missing + ".so", diagnostic="missing FDI reference symbol")
         case("disabled", overrides={"FAKE_FDI_DISABLED": "1"}, diagnostic="FDI capabilities do not match")
         case("dirty_reset", overrides={"FAKE_FDI_DIRTY_RESET": "1"}, diagnostic="reference natural reset is not zero")
+        if args.scalar_compare:
+            case("strict_csr", "strict_csr", expected=0)
     report["passed"] = sum(item["passed"] for item in report["cases"])
-    report["status"] = "PASS" if report["passed"] == 10 else "FAIL"
+    report["scalar_compare"] = args.scalar_compare
+    report["expected_cases"] = 11 if args.scalar_compare else 10
+    report["status"] = "PASS" if report["passed"] == report["expected_cases"] else "FAIL"
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(f"FDI production proxy fake unit {report['status']}: {report['passed']}/10; {output}")
+    print(f"FDI production proxy fake unit {report['status']}: {report['passed']}/{report['expected_cases']}; {output}")
     return int(report["status"] != "PASS")
 
 

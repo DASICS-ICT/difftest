@@ -11,16 +11,16 @@ int Difftest::fdi_ingest() {
     const char *path = getenv("FDI_TRACE_PATH");
     if (!path || !(fdi_trace = fopen(path, "wx"))) return uit.error("fresh FDI_TRACE_PATH is required");
   }
-  // Indexed lanes preserve simultaneous CSR post, trap post, and cancellation
-  // evidence. Reset/pre share a lane only under the producer's exclusion check.
+  // Indexed lanes preserve simultaneous access post, trap post, and cancellation
+  // evidence. CSR and call share lanes under the producer's serialization check.
   static_assert(sizeof(dut->fdi_observation) / sizeof(dut->fdi_observation[0]) == 4,
                 "FDI transport requires four independent observation lanes");
   std::vector<FdiObservation> packets;
   for (size_t lane = 0; lane < 4; ++lane) {
     const auto &source = dut->fdi_observation[lane];
     if (!source.valid) continue;
-    if ((lane == 0 && source.kind != FDI_RESET && source.kind != FDI_CSR_PRE) ||
-        (lane == 1 && source.kind != FDI_CSR_POST) || (lane == 2 && source.kind != FDI_TRAP_POST) ||
+    if ((lane == 0 && source.kind != FDI_RESET && source.kind != FDI_CSR_PRE && source.kind != FDI_CALL_PRE) ||
+        (lane == 1 && source.kind != FDI_CSR_POST && source.kind != FDI_CALL_POST) || (lane == 2 && source.kind != FDI_TRAP_POST) ||
         (lane == 3 && source.kind != FDI_CANCEL)) return uit.error("FDI observation is in the wrong lane", source.uid);
     FdiObservation packet;
 #define FDI_COPY(name) packet.name = source.name

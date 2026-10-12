@@ -101,9 +101,137 @@ static void finish(FdiLedger &ledger, const FdiObservation &p, const FdiObservat
   require(!ledger.after(after), "compare saved post after reference execution");
 }
 
+static FdiObservation call_pre(uint64_t uid = 1, uint64_t cycle = 12) {
+  auto p = pre(uid, cycle);
+  p.kind = FDI_CALL_PRE; p.csrAddress = 0x8b1; p.readNeeded = 0;
+  p.instruction = UINT32_C(0x0040000b); // fdicall.j uses its dedicated immediate encoding
+  return p;
+}
+
+static FdiObservation call_post(const FdiObservation &p) {
+  auto q = p;
+  q.kind = FDI_CALL_POST; q.cycle++; q.actualWrite = p.permitted;
+  q.responseIllegal = !p.permitted;
+  if (q.actualWrite) q.words[40] = p.pc + 4;
+  return q;
+}
+
+static int call_test(const std::string &test) {
+  FdiLedger ledger;
+  auto p = call_pre();
+  if (test == "jr") p.instruction = UINT32_C(0x0040910b);
+  if (test == "jr_rd_zero") p.instruction = UINT32_C(0x0000900b);
+  const bool illegal = test == "illegal" || test == "illegal_retired" || test == "illegal_changed" ||
+      test == "illegal_missing_cancel" || test == "wrong_cancel_reason" || test == "discard";
+  if (illegal) p.permitted = 0;
+  auto q = call_post(p);
+  if (test == "missing_pre") {
+    require(!ledger.observe(reset()) && !ledger.ready(p.uid, p.instruction), "call needs acceptance");
+    require(ledger.before(boundary(p), reference(p), false), "unobserved call cannot retire");
+    return 0;
+  }
+  if (test == "orphan_post") {
+    require(!ledger.observe(reset()) && ledger.observe(q), "call effect needs acceptance");
+    return 0;
+  }
+  if (test == "bad_encoding" || test == "csr_as_call" || test == "call_as_csr" ||
+      test == "bad_read" || test == "bad_write" || test == "bad_address") {
+    if (test == "bad_encoding") p.instruction ^= UINT32_C(0x2000);
+    if (test == "csr_as_call") p.instruction = pre().instruction;
+    if (test == "call_as_csr") p.kind = FDI_CSR_PRE;
+    if (test == "bad_read") p.readNeeded = 1;
+    if (test == "bad_write") p.writeNeeded = 0;
+    if (test == "bad_address") p.csrAddress = 0x8b0;
+    require(!ledger.observe(reset()) && ledger.observe(p), "call obligations match its encoding");
+    return 0;
+  }
+  accepted(ledger, p);
+  if (test == "duplicate_pre") {
+    auto duplicate = p; duplicate.cycle++;
+    require(ledger.observe(duplicate), "call acceptance cannot repeat across cycles"); return 0;
+  }
+  if (test == "missing_post") {
+    require(!ledger.ready(p.uid, p.instruction) && ledger.before(boundary(p), reference(p), false),
+            "call cannot retire without its actual effect snapshot"); return 0;
+  }
+  if (test == "discard") {
+    auto cancel = p; cancel.kind = FDI_CANCEL; cancel.cycle++; cancel.cancelReason = 1;
+    require(!ledger.observe(cancel) && ledger.canceled_accesses() == 1 && !ledger.finalize(),
+            "discarded no-effect call closes with real cancellation"); return 0;
+  }
+  if (test == "wrong_uid") q.uid++;
+  if (test == "wrong_rob") q.robIdx++;
+  if (test == "wrong_pc") q.pc += 4;
+  if (test == "wrong_kind") q.kind = FDI_CSR_POST;
+  if (test == "late_post") q.cycle++;
+  if (test == "missing_effect") q.actualWrite = 0;
+  if (test == "wrong_link") q.words[40] += 4;
+  if (test == "truncated_link") q.words[40] &= UINT64_C(0xffffffff);
+  if (test == "unrelated_word") q.words[41] = 8;
+  if (test == "illegal_changed") q.words[40] = p.pc + 4;
+  if (test == "wrong_response") q.responseIllegal = 1;
+  const int observed = ledger.observe(q);
+  if (test == "wrong_uid" || test == "wrong_rob" || test == "wrong_pc" || test == "wrong_kind" ||
+      test == "late_post" || test == "missing_effect" || test == "wrong_link" || test == "truncated_link" ||
+      test == "unrelated_word" || test == "illegal_changed" || test == "wrong_response") {
+    require(observed, "bad call completion must fail"); return 0;
+  }
+  require(!observed && ledger.ready(p.uid, p.instruction), "call post retained until boundary");
+  if (test == "duplicate_post") {
+    q.cycle++;
+    require(ledger.observe(q), "second call effect is rejected"); return 0;
+  }
+  if (test == "cancel_after_write") {
+    auto cancel = p; cancel.kind = FDI_CANCEL; cancel.cycle += 2; cancel.cancelReason = 1;
+    cancel.words = q.words;
+    require(ledger.observe(cancel), "committed implicit write cannot be discarded"); return 0;
+  }
+  if (test == "illegal_retired") {
+    require(ledger.before(boundary(p), reference(p), false), "illegal call cannot retire"); return 0;
+  }
+  if (illegal) {
+    auto event = p; event.kind = FDI_TRAP_POST; event.cycle += 3; event.eventSeq = 1;
+    require(!ledger.observe(event), "illegal call trap snapshot");
+    auto b = boundary(p); b.eventSeq = 1;
+    require(!ledger.event_ready(1, p.uid, p.instruction), "illegal call waits for synchronous cancel");
+    if (test == "illegal_missing_cancel") {
+      require(ledger.before(b, reference(p), true), "missing synchronous cancellation cannot pass"); return 0;
+    }
+    auto cancel = p; cancel.kind = FDI_CANCEL; cancel.cycle += 4;
+    cancel.cancelReason = test == "wrong_cancel_reason" ? 1 : 2;
+    require(!ledger.observe(cancel), "observed call cancellation");
+    if (test == "wrong_cancel_reason") {
+      require(!ledger.event_ready(1, p.uid, p.instruction) && ledger.before(b, reference(p), true),
+              "ordinary discard cannot replace synchronous fault cancellation"); return 0;
+    }
+    require(ledger.event_ready(1, p.uid, p.instruction) && !ledger.before(b, reference(p), true) &&
+            !ledger.after(reference(event)) && !ledger.finalize(), "illegal call compared at its real trap");
+    return 0;
+  }
+  if (test == "saved_snapshots" || test == "unchanged_link") {
+    auto next = call_pre(2, 16); next.words = q.words;
+    if (test == "unchanged_link") next.pc = p.pc;
+    auto next_post = call_post(next);
+    require(!ledger.observe(next) && !ledger.observe(next_post), "independent younger call snapshots");
+    finish(ledger, p, q); finish(ledger, next, next_post);
+    require(ledger.compared_retirements() == 2 && !ledger.finalize(), "each call owns one retirement comparison");
+    return 0;
+  }
+  if (test == "reference_mismatch") {
+    require(!ledger.before(boundary(p), reference(p), false), "call pre matches reference");
+    auto wrong = reference(q); wrong.words[40] ^= 8;
+    require(ledger.after(wrong), "real reference call effect must match"); return 0;
+  }
+  require(test == "j" || test == "jr" || test == "jr_rd_zero", "known call test");
+  finish(ledger, p, q);
+  require(ledger.compared_retirements() == 1 && !ledger.finalize(), "call comparison closes once");
+  return 0;
+}
+
 int main(int argc, char **argv) {
   require(argc == 2, "one test name");
   const std::string test = argv[1];
+  if (test.compare(0, 5, "call_") == 0) return call_test(test.substr(5));
   if (test.compare(0, 4, "api_") == 0) {
     fault = test.substr(4);
     FdiReference ref;

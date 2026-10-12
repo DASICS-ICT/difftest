@@ -16,6 +16,7 @@
 
 #include "refproxy.h"
 #include "dasics_development_audit.h"
+#include "dasics_scalar_audit.h"
 #include <dlfcn.h>
 #include <fstream>
 #include <iostream>
@@ -227,6 +228,43 @@ AbstractRefProxy::AbstractRefProxy(int coreid, size_t ram_size, const char *env,
   uit_require_equal("event request bytes", uit_capabilities.event_request_bytes, sizeof(DifftestUitHUEvent));
   uit_require_equal("state bytes", uit_capabilities.state_bytes, sizeof(DifftestUitState));
   uit_require_equal("exec result bytes", uit_capabilities.exec_result_bytes, sizeof(DifftestUitExecResult));
+#ifdef DASICS_SCALAR_COMPARE
+  struct stat loaded_stat{};
+  if (loaded_reference_path.empty() || stat(loaded_reference_path.c_str(), &loaded_stat) ||
+      !S_ISREG(loaded_stat.st_mode)) DasicsScalarAudit::fail("reference is not a regular dynamic object");
+  auto verify_owner = [&](void *function) {
+    Dl_info info{};
+    struct stat symbol_stat{};
+    if (!dladdr(function, &info) || !info.dli_fname || stat(info.dli_fname, &symbol_stat) ||
+        symbol_stat.st_dev != loaded_stat.st_dev || symbol_stat.st_ino != loaded_stat.st_ino)
+      DasicsScalarAudit::fail("reference symbol belongs to another loaded object");
+  };
+#define VerifyScalarOwner(this_func, dummy, ret, ...) verify_owner(reinterpret_cast<void *>(this_func));
+  REF_ALL(VerifyScalarOwner)
+#undef VerifyScalarOwner
+  verify_owner(reinterpret_cast<void *>(uit_ref_regcpy));
+  verify_owner(reinterpret_cast<void *>(uit_query_caps));
+  verify_owner(reinterpret_cast<void *>(uit_initialize));
+  verify_owner(reinterpret_cast<void *>(uit_execute));
+  verify_owner(reinterpret_cast<void *>(uit_raise_event));
+  verify_owner(reinterpret_cast<void *>(uit_get_state));
+  verify_owner(reinterpret_cast<void *>(uit_read_tx));
+  verify_owner(reinterpret_cast<void *>(fdi_api.query));
+  verify_owner(reinterpret_cast<void *>(fdi_api.capture));
+  verify_owner(reinterpret_cast<void *>(fdi_api.initialize));
+  verify_owner(reinterpret_cast<void *>(fdi_api.state));
+  DasicsScalarAudit::mark_reference_loaded();
+  FILE *audit = DasicsScalarAudit::event("loaded");
+  fputs(",\"path\":", audit);
+  DasicsScalarAudit::string(audit, loaded_reference_path.c_str());
+  fprintf(audit, ",\"device\":%" PRIu64 ",\"inode\":%" PRIu64
+          ",\"enabled_features\":%" PRIu64 ",\"supported_features\":%" PRIu64
+          ",\"regcpy_bytes\":1400,\"csrcpy_bytes\":32768,\"regcpy_arity\":2,"
+          "\"all_required_symbol_owners_verified\":true",
+          static_cast<uint64_t>(loaded_stat.st_dev), static_cast<uint64_t>(loaded_stat.st_ino),
+          uit_capabilities.enabled_features, uit_capabilities.supported_features);
+  DasicsScalarAudit::flush();
+#endif
 #endif
 
   if (NUM_CORES > 1) {
@@ -465,6 +503,7 @@ int RefProxy::compare(DiffTestState *dut) {
   };
   for (int i = 0; i < sizeof(results) / sizeof(int); i++) {
     if (results[i]) {
+#ifndef DASICS_SCALAR_COMPARE
       // There may be some waive rules for CSRs
       if (i == sizeof(results) / sizeof(int) - 1) {
         // If mismatches are cleared, we sync the states back to REF.
@@ -473,6 +512,7 @@ int RefProxy::compare(DiffTestState *dut) {
           return 0;
         }
       }
+#endif
       return 1;
     }
   }

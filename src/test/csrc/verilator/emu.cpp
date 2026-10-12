@@ -28,6 +28,7 @@
 #ifndef CONFIG_NO_DIFFTEST
 #include "difftest.h"
 #include "dasics_development_audit.h"
+#include "dasics_scalar_audit.h"
 #include "goldenmem.h"
 #include "refproxy.h"
 #endif // CONFIG_NO_DIFFTEST
@@ -189,7 +190,10 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
       case 0:
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
         // These modes restore or modify execution outside the controlled stream.
-        if (long_index == 0 || long_index == 5 || long_index == 6 || long_index == 7 ||
+        if (long_index == 0 || long_index == 6 || long_index == 7 ||
+#ifndef DASICS_SCALAR_COMPARE
+            long_index == 5 ||
+#endif
             long_index == 10 || long_index == 16 || long_index == 19 || long_index == 24) {
           fprintf(stderr, "UIT06 does not support --%s\n", long_options[long_index].name);
           exit(EXIT_FAILURE);
@@ -326,9 +330,16 @@ inline EmuArgs parse_args(int argc, const char *argv[]) {
   fprintf(stderr, "UIT06 was built with an unsupported execution mode\n");
   exit(EXIT_FAILURE);
 #else
+#ifdef DASICS_SCALAR_COMPARE
+  if (args.enable_fork || args.enable_runahead || args.snapshot_path || args.gcpt_restore ||
+      args.image_as_footprints || args.trace_name || !args.image ||
+      (!args.enable_diff && args.enable_ref_trace) ||
+      (args.enable_diff ? !difftest_ref_so : bool(difftest_ref_so))) {
+#else
   if (!args.enable_diff || args.enable_fork || args.enable_runahead || args.snapshot_path ||
       args.gcpt_restore || args.image_as_footprints || (args.trace_name && args.trace_is_read) ||
       !difftest_ref_so) {
+#endif
     fprintf(stderr, "UIT06 requires an explicit reference and a fresh ordinary image run\n");
     exit(EXIT_FAILURE);
   }
@@ -384,6 +395,9 @@ Emulator::Emulator(int argc, const char *argv[])
 #endif // VERILATOR
 
   args = parse_args(argc, argv);
+#ifdef DASICS_SCALAR_COMPARE
+  DasicsScalarAudit::initialize(args.enable_diff);
+#endif
 #ifdef DASICS_DEVELOPMENT_AUDIT
   if (args.enable_fork || args.enable_runahead || args.snapshot_path || args.gcpt_restore ||
       args.image_as_footprints || args.trace_name || !args.image ||
@@ -1022,6 +1036,15 @@ int Emulator::is_finished() {
 
 int Emulator::is_good() {
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
+#ifdef DASICS_SCALAR_COMPARE
+  // A raw-only run has no reference lifecycle to finalize. Require its real
+  // terminal retirement rather than treating a cycle limit as success.
+  if (!args.enable_diff) {
+    const auto &audit = DasicsScalarAudit::state();
+    return audit.terminal_seen && audit.terminal_code == 0 && !audit.reference_loaded &&
+           trapCode == STATE_GOODTRAP;
+  }
+#endif
   for (int i = 0; i < NUM_CORES; i++) {
     if (difftest[i]->uit_finalize()) trapCode = STATE_ABORT;
   }

@@ -41,6 +41,16 @@ inline bool fdi_is_csr(uint32_t instruction) {
          (address >= 0x8b0 && address <= 0x8b3) || (address >= 0x8c0 && address <= 0x8c8);
 }
 
+// FDICALL owns an implicit ReturnPC write independently of its optional rd.
+inline bool fdi_is_call(uint32_t instruction) {
+  return (instruction & UINT32_C(0x707f)) == UINT32_C(0x000b) ||
+         (instruction & UINT32_C(0x707f)) == UINT32_C(0x100b);
+}
+
+inline bool fdi_is_access(uint32_t instruction) {
+  return fdi_is_csr(instruction) || fdi_is_call(instruction);
+}
+
 class FdiFailure {
 public:
   bool failed() const { return !diagnostic.empty(); }
@@ -188,7 +198,8 @@ private:
 };
 
 enum FdiObservationKind : uint8_t {
-  FDI_RESET = 1, FDI_CSR_PRE = 2, FDI_CSR_POST = 3, FDI_TRAP_POST = 4, FDI_CANCEL = 5
+  FDI_RESET = 1, FDI_CSR_PRE = 2, FDI_CSR_POST = 3, FDI_TRAP_POST = 4, FDI_CANCEL = 5,
+  FDI_CALL_PRE = 6, FDI_CALL_POST = 7
 };
 
 // Logical host input, independent of the generated DPI layout and the public
@@ -228,7 +239,8 @@ public:
     for (const auto &packet : packets) {
       if (packet.cycle != sample.cycle || packet.words != sample.words)
         return fail("FDI lanes disagree about their shared bank sampling cycle", packet.uid);
-      effect |= (packet.kind == FDI_CSR_POST && packet.actualWrite) || packet.kind == FDI_TRAP_POST;
+      effect |= ((packet.kind == FDI_CSR_POST || packet.kind == FDI_CALL_POST) && packet.actualWrite) ||
+                packet.kind == FDI_TRAP_POST;
     }
     // All lanes sample the same physical bank in this cycle. Apply this check
     // once per frame so a simultaneous older post and younger pre are ordered
@@ -271,13 +283,15 @@ private:
       return 0;
     }
     if (closed.count(packet.uid)) return fail("observation for a closed UID", packet.uid);
-    if (packet.kind == FDI_CSR_PRE) {
-      if (!fdi_is_csr(packet.instruction) || packet.csrAddress != packet.instruction >> 20 ||
+    if (packet.kind == FDI_CSR_PRE || packet.kind == FDI_CALL_PRE) {
+      const bool call = packet.kind == FDI_CALL_PRE;
+      if ((call ? !fdi_is_call(packet.instruction) || packet.csrAddress != 0x8b1 :
+                  !fdi_is_csr(packet.instruction) || packet.csrAddress != packet.instruction >> 20) ||
           packet.actualWrite || packet.cancelReason || transactions.count(packet.uid) ||
           transactions.size() >= capacity) return fail("invalid or duplicate FDI acceptance", packet.uid);
       const uint32_t operation = (packet.instruction >> 12) & 3;
-      const bool read = operation != 1 || ((packet.instruction >> 7) & 31);
-      const bool write = operation == 1 || ((packet.instruction >> 15) & 31);
+      const bool read = !call && (operation != 1 || ((packet.instruction >> 7) & 31));
+      const bool write = call || operation == 1 || ((packet.instruction >> 15) & 31);
       if (bool(packet.readNeeded) != read || bool(packet.writeNeeded) != write)
         return fail("FDI access obligations differ from the instruction", packet.uid);
       Transaction value;
@@ -291,7 +305,10 @@ private:
     const auto &pre = transaction.pre;
     if (!same_access(pre, packet) || packet.cycle <= pre.cycle)
       return fail("FDI completion identity or cycle mismatch", packet.uid);
-    if (packet.kind == FDI_CSR_POST) {
+    if (packet.kind == FDI_CSR_POST || packet.kind == FDI_CALL_POST) {
+      const bool call = pre.kind == FDI_CALL_PRE;
+      if ((packet.kind == FDI_CALL_POST) != call || (call && packet.cycle != pre.cycle + 1))
+        return fail("FDI completion kind or call latency mismatch", packet.uid);
       if (transaction.post_seen || transaction.cancel_seen || packet.cancelReason)
         return fail("duplicate or canceled FDI post state", packet.uid);
       if (packet.responseVirtual || bool(packet.responseIllegal) == bool(pre.permitted))
@@ -300,6 +317,15 @@ private:
         return fail("FDI write effect is missing or unexpected", packet.uid);
       if (!packet.actualWrite && packet.words != pre.words)
         return fail("non-writing FDI transaction changed state", packet.uid);
+      if (call && packet.actualWrite) {
+        // A successful call changes only its full-width ReturnPC. The bank is
+        // sampled from hardware, never manufactured from this expectation.
+        for (size_t word = 0; word < packet.words.size(); ++word) {
+          const uint64_t expected_word = word == 40 ? pre.pc + 4 : pre.words[word];
+          if (packet.words[word] != expected_word)
+            return fail("FDICALL implicit ReturnPC effect mismatch", packet.uid, word);
+        }
+      }
       transaction.post = packet;
       transaction.post_seen = true;
       return 0;
@@ -329,7 +355,7 @@ private:
 
 public:
   bool ready(uint64_t uid, uint32_t instruction) const {
-    if (!fdi_is_csr(instruction)) return true;
+    if (!fdi_is_access(instruction)) return true;
     const auto found = transactions.find(uid);
     return found != transactions.end() && found->second.post_seen;
   }
@@ -339,7 +365,7 @@ public:
     // reference must only raise an interrupt, not execute that instruction.
     if (asynchronous) return events.count(sequence) && !transactions.count(uid);
     if (!events.count(sequence) || !ready(uid, instruction)) return false;
-    if (!fdi_is_csr(instruction)) return true;
+    if (!fdi_is_access(instruction)) return true;
     const auto &transaction = transactions.at(uid);
     // Trap state can reach the transport before the redirect cancellation.
     // Keep the accepted fault UID alive until both pieces of evidence arrive.
@@ -347,7 +373,7 @@ public:
   }
 
   // These calls bracket the existing reference execution; they never execute
-  // an instruction themselves, including for FDI CSR accesses.
+  // an instruction themselves, including for FDI CSR accesses and calls.
   int before(const FdiBoundary &boundary, const DifftestFdiState &reference, bool event) {
     if (failed()) return 1;
     if (finalized || executing || !reset_seen || boundary.epoch != session_epoch || !boundary.uid ||
@@ -359,8 +385,8 @@ public:
     if (FdiReference::bank_of(reference) != model_bank)
       return fail("reference FDI state changed outside a compared boundary", boundary.uid);
     auto found = transactions.find(boundary.uid);
-    const bool csr_instruction = fdi_is_csr(boundary.instruction) && !boundary.asynchronous;
-    if (csr_instruction) {
+    const bool access_instruction = fdi_is_access(boundary.instruction) && !boundary.asynchronous;
+    if (access_instruction) {
       if (found == transactions.end() || !found->second.post_seen || closed.count(boundary.uid))
         return fail("missing FDI transaction at architectural boundary", boundary.uid);
       const auto &transaction = found->second;
@@ -384,16 +410,17 @@ public:
       if (snapshot == events.end() || closed_events.count(boundary.eventSeq) ||
           !same_boundary(snapshot->second, boundary) || snapshot->second.beforeCount != boundary.beforeCount)
         return fail("trap snapshot does not match its architectural boundary", boundary.uid);
-      if (csr_instruction && (snapshot->second.cycle <= found->second.pre.cycle ||
-          (found->second.post.kind == FDI_CSR_POST && snapshot->second.cycle < found->second.post.cycle)))
+      if (access_instruction && (snapshot->second.cycle <= found->second.pre.cycle ||
+          ((found->second.post.kind == FDI_CSR_POST || found->second.post.kind == FDI_CALL_POST) &&
+           snapshot->second.cycle < found->second.post.cycle)))
         return fail("FDI trap snapshot precedes its accepted transaction", boundary.uid);
       expected = snapshot->second.words;
     } else {
       if (closed.count(boundary.uid)) return fail("architectural UID executed more than once", boundary.uid);
       if (boundary.afterCount <= boundary.beforeCount)
         return fail("invalid retirement count", boundary.uid);
-      if (csr_instruction && boundary.afterCount - boundary.beforeCount != 1)
-        return fail("FDI CSR retirement was fused", boundary.uid);
+      if (access_instruction && boundary.afterCount - boundary.beforeCount != 1)
+        return fail("FDI access retirement was fused", boundary.uid);
       expected = found == transactions.end() ? model_bank : found->second.post.words;
     }
     active_boundary = boundary;

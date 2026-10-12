@@ -92,6 +92,15 @@ $(error Development audit requires ordinary DiffTest observations; use runtime -
 endif
 SIM_CXXFLAGS += -DDASICS_DEVELOPMENT_AUDIT
 endif
+ifeq ($(DASICS_SCALAR_COMPARE),1)
+ifeq ($(NO_DIFF),1)
+$(error Scalar comparison requires observations; use runtime --no-diff)
+endif
+ifeq ($(DASICS_DEVELOPMENT_AUDIT),1)
+$(error Scalar comparison and development audit use separate lifecycle owners)
+endif
+SIM_CXXFLAGS += -DDASICS_SCALAR_COMPARE
+endif
 ifeq ($(NO_DIFF), 1)
 SIM_CXXFLAGS += -DCONFIG_NO_DIFFTEST
 else

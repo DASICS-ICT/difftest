@@ -1,5 +1,16 @@
 #ifdef CONFIG_DIFFTEST_USERTIMERACCESS
 
+#ifdef DASICS_SCALAR_COMPARE
+#include "dasics_scalar_event.h"
+static void scalar_log_trap(FILE *trace, const std::array<uint64_t, 9> &values) {
+  static const char *names[] = {"mode", "virt", "mcause", "mepc", "mtval", "scause", "sepc", "stval", "target"};
+  fputc('{', trace);
+  for (size_t i = 0; i < values.size(); ++i)
+    fprintf(trace, "%s\"%s\":\"0x%016lx\"", i ? "," : "", names[i], values[i]);
+  fputc('}', trace);
+}
+#endif
+
 #define UIT_BANK(x, p) std::array<uint64_t, 8>{x.p##ustatus, x.p##uie, x.p##utvec, x.p##uscratch, x.p##uepc, x.p##ucause, x.p##utval, x.p##inHandler}
 static const char *uit_bank_names[] = {"ustatus", "uie", "utvec", "uscratch", "uepc", "ucause", "utval", "in_handler"};
 static void uit_log_bank(FILE *file, const std::array<uint64_t, 8> &bank) {
@@ -344,6 +355,28 @@ int Difftest::uit_event() {
     do_exception();
   }
   proxy->sync();
+#ifdef DASICS_SCALAR_COMPARE
+  // Compare this event before consuming any younger instruction or FDI state.
+  // Both destination and inactive trap banks must agree without importing DUT
+  // values into the reference or waiting for the frame's final CSR snapshot.
+  const char *event_mismatch = dasics_scalar_event_mismatch(event, proxy->csr, proxy->hcsr, proxy->pc);
+  uit.prefix("scalar_event_state");
+  fprintf(uit.trace, ",\"uid\":%lu,\"event_seq\":%lu,\"pass\":%s,\"dut_trap\":",
+          event.uid, event.eventSeq, event_mismatch ? "false" : "true");
+  scalar_log_trap(uit.trace, {event.csrState_privilegeMode, event.hcsrState_virtMode,
+      event.csrState_mcause, event.csrState_mepc, event.csrState_mtval,
+      event.csrState_scause, event.csrState_sepc, event.csrState_stval, event.target});
+  fputs(",\"ref_trap\":", uit.trace);
+  scalar_log_trap(uit.trace, {proxy->csr.privilegeMode, proxy->hcsr.virtMode,
+      proxy->csr.mcause, proxy->csr.mepc, proxy->csr.mtval,
+      proxy->csr.scause, proxy->csr.sepc, proxy->csr.stval, proxy->pc});
+  fputs("}\n", uit.trace); fflush(uit.trace);
+  if (event_mismatch) {
+    fprintf(stderr, "DASICS scalar event state mismatch: %s (uid=%lu)\n", event_mismatch, event.uid);
+    return uit.error("scalar event architectural state mismatch", event.uid);
+  }
+  if (uit_compare_bank(UIT_BANK(event, post_), event.uid, "event", event.eventSeq)) return 1;
+#endif
 #ifdef CONFIG_DIFFTEST_FDIOBSERVATION
   if (fdi_after_boundary()) return 1;
 #endif
@@ -355,9 +388,14 @@ int Difftest::uit_event() {
   uit.prefix("event");
   fprintf(uit.trace, ",\"rob\":%u,\"robflag\":%u,\"frame_cycle\":%lu", event.robIdx, event.robFlag, dut->uit_clock.cycle);
   fprintf(uit.trace, ",\"instruction\":\"0x%08x\",\"exception_cause\":%u,\"decode_fault\":%s", dut->event.exceptionInst, dut->event.exception, decode_fault ? "true" : "false");
+#ifdef DASICS_SCALAR_COMPARE
+  fprintf(uit.trace, ",\"event_state_compared\":true,\"reference_exception_guided\":false");
+#endif
   fprintf(uit.trace, ",\"uid\":%lu,\"event_seq\":%lu,\"control_seq\":%lu,\"kind\":\"%s\",\"before_count\":%lu,\"pc_before\":\"0x%lx\",\"pc_after\":\"0x%lx\",\"dut_pc\":\"0x%lx\",\"dut_target\":\"0x%lx\"}\n", event.uid, event.eventSeq, uit.control_seq, dut->event.irToHU ? "hu_timer" : dut->event.interrupt ? "interrupt" : "exception", event.beforeCount, pc_before, proxy->pc, event.pc, event.target);
   if (proxy->pc != event.target) return uit.error("architectural event target mismatch", event.uid);
+#ifndef DASICS_SCALAR_COMPARE
   if (uit_compare_bank(UIT_BANK(event, post_), event.uid, "event", event.eventSeq)) return 1;
+#endif
 #define UIT_COPY_CSR(name) dut->csr.name = event.csrState_##name;
   UIT_COPY_CSR(privilegeMode) UIT_COPY_CSR(mstatus) UIT_COPY_CSR(sstatus) UIT_COPY_CSR(mepc)
   UIT_COPY_CSR(sepc) UIT_COPY_CSR(mtval) UIT_COPY_CSR(stval) UIT_COPY_CSR(mtvec)
